@@ -682,7 +682,7 @@ async def on_message(message: discord.Message):
                     f"OpenAI-Fehler in Channel {message.channel.id} von {message.author} ({message.author.id}): {e}"
                 )
                 await message.reply(
-                    "Nya... gerade ist etwas schiefgelaufen. Ich habe Gomati einen Hinweis hinterlassen. Versuch es gleich nochmal.",
+                    "Nya... gerade ist etwas schiefgelaufen. Ich habe meinem Meister einen Hinweis hinterlassen. Versuch es gleich nochmal.",
                     mention_author=False
                 )
                 return
