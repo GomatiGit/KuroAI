@@ -28,8 +28,8 @@ def load_config() -> dict[str, Any]:
 
 config = load_config()
 
-DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip() or config.get("discord_token", "").strip()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip() or config.get("openai_api_key", "").strip()
+DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 
 if not DISCORD_TOKEN:
     raise RuntimeError("Discord Token fehlt.")
