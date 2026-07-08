@@ -165,6 +165,11 @@ Alternativ kann ein Bild auch als Antwort auf eine Nachricht von Kuro gesendet w
 - [ ] derzeit nichts weiter geplant
 
 ---
+## ⚠️ Hinweis
+
+Ich habe den Bot mit Hilfe von KI erstellt programmiert. Die Bilder und auch der Code entstammen aus meinen Prompts und können Fehlerhaft sein.
+Du bist für die Sicherheit deiner Daten selbst verantwortlich.
+Wenn dir etwas auffällt, was geändert werden sollte, dann teile es bitte mit.
 
 ## 🔒 Sicherheit
 
