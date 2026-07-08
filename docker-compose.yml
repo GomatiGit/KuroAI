@@ -1,7 +1,11 @@
 services:
   kuroai:
+    command: |-
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             python bot.py"
     build: .
     container_name: kuroai
+    image: python:3.11-slim
     restart: unless-stopped
     working_dir: /app
     environment:
