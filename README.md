@@ -2,10 +2,6 @@
 # KuroAI
 
 <p align="center">
-  <img src="assets/kuro.png" height="600" alt="KuroAI Banner">
-</p>
-
-<p align="center">
   <img src="assets/avatar.png" width="180" alt="KuroAI Avatar">
 </p>
 
