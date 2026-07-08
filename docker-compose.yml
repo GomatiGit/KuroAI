@@ -1,0 +1,11 @@
+services:
+  kuroai:
+    build: .
+    container_name: kuroai
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      DISCORD_BOT_TOKEN: "DEIN_DISCORD_TOKEN"
+      OPENAI_API_KEY: "DEIN_OPENAI_API_KEY"
+    volumes:
+      - ./:/app

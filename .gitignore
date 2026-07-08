@@ -1,0 +1,29 @@
+# Secrets / lokale Konfiguration
+config.json
+.env
+*.env
+
+# Runtime-Dateien
+known_members.json
+mode_override.json
+ghetto_day.json
+.avatar_applied
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
