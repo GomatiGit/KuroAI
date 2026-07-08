@@ -2,7 +2,7 @@
 # KuroAI
 
 <p align="center">
-  <img src="assets/background.png" alt="KuroAI Banner">
+  <img src="assets/kuro.png" height="600" alt="KuroAI Banner">
 </p>
 
 <p align="center">
@@ -55,26 +55,71 @@ Ein Discord-Rollenspielbot mit OpenAI, mehreren Persönlichkeiten, Bildanalyse u
 <img src="assets/avatar.png" width="250">
 </p>
 
+### Look
+
+<p align="center">
+  <img src="assets/kuro.png" alt="Kuro als Maid" height="600"/>
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/kuro_summer.png" alt="Kuro im Sommeroutfit" height="600"/>
+</p>
+
+<p align="center">
+  <sub>Arbeitskleidung • Sommerkleidung</sub>
+</p>
+---
+
+## 1. Voraussetzungen
+
+Du brauchst:
+
+- einen Discord Bot Token
+- einen OpenAI API Key
+- Docker oder Python 3.11+
+- aktivierten Discord Developer Mode
+
+---
+
+## 2. Discord Bot erstellen
+
+1. Gehe zu <https://discord.com/developers/applications>
+2. Erstelle eine neue Application
+3. Öffne den Bereich **Bot**
+4. Erstelle den Bot und mach ihn public (keine Sorge, nur du bestimmst wer den Bot verwenden darf in der config)
+5. Aktiviere unter **Privileged Gateway Intents**:
+   - Message Content Intent
+   - Server Members Intent
+6. Kopiere den Bot Token
+
+---
+
+## 3. OpenAI API Key
+
+Erstelle einen API Key im OpenAI Dashboard auf <https://platform.openai.com/> und speichere ihn sicher.
+Stelle sicher, dass du ein monatliches Limit setzt (z.Bsp. 5€)
+ - Der Bot verbraucht Tokens und Tokens kosten nunmal Geld
+
+## Die Keys gehören **nicht** in die `config.json`, sondern in die Docker-Umgebungsvariablen.
+
 ---
 
 ## 🚀 Installation
 
-1. Repository klonen
+4. Repository klonen
 
 ```bash
 git clone https://github.com/GomatiGit/KuroAI.git
 cd KuroAI
 ```
 
-2. Konfiguration erstellen
+5. Konfiguration erstellen
 
 ```bash
 cp config.example.json config.json
 ```
 
-3. `config.json` anpassen.
+6. `config.json` anpassen.
 
-4. Docker-Umgebungsvariablen setzen:
+7. Docker-Umgebungsvariablen setzen:
 
 ```yaml
 environment:
@@ -82,7 +127,7 @@ environment:
   OPENAI_API_KEY: "DEIN_OPENAI_API_KEY"
 ```
 
-5. Starten
+8. Starten
 
 ```bash
 docker compose up -d
