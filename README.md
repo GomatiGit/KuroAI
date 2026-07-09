@@ -41,11 +41,11 @@ Ein Discord-Rollenspielbot mit OpenAI, mehreren Persönlichkeiten, Bildanalyse u
 
 ## 📸 Bilder
 
-### Banner
+### Bot-Discord-Banner
 
 ![](assets/background.png)
 
-### Avatar
+### Bot-Discord-Avatar
 
 <p align="center">
 <img src="assets/avatar.png" width="250">
