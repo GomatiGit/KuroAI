@@ -26,7 +26,10 @@ Ein Discord-Rollenspielbot mit OpenAI, mehreren Persönlichkeiten, Bildanalyse u
 ## ✨ Features
 
 - 🐾 Mehrere Persönlichkeiten (Personas)
+- 🧠 Behält ihr "Gedächtnis" nach Neustart
 - 🤖 OpenAI GPT-5 Integration
+- 👯 Identifiziert die Chatter eindeutig voneinander
+     (keine impersonisierung durch Namensändeung)
 - 🖼️ Analyse hochgeladener Bilder
 - 👋 Welcome- und Goodbye-Nachrichten
 - 🌍 Multi-Server-Unterstützung
@@ -72,6 +75,8 @@ Du brauchst:
 - einen OpenAI API Key
 - Docker oder Python 3.11+
 - aktivierten Discord Developer Mode
+- Deine Discord Server ID
+- Deine Discord User ID
 
 ---
 
@@ -85,6 +90,7 @@ Du brauchst:
    - Message Content Intent
    - Server Members Intent
 6. Kopiere den Bot Token
+7. Erstelle einen Einladungslink und füge ihm deinen Discord Server hinzu
 
 ---
 
@@ -121,6 +127,7 @@ cp config.example.json config.json
 environment:
   DISCORD_BOT_TOKEN: "DEIN_DISCORD_TOKEN"
   OPENAI_API_KEY: "DEIN_OPENAI_API_KEY"
+  KURO_OWNER_USER_ID: "DEINE_DISCORD_USER_ID"
 ```
 
 8. Starten
@@ -133,10 +140,12 @@ docker compose up -d
 
 ## ⚙️ Konfiguration
 
+- Bei `max_history_per_channel` kannst du angeben, wieviel Nachrichten je Channel du an OpenAI übergibst für die Historie (!kostenfaktor)
 - `allowed_guild_ids` bestimmt, auf welchen Servern Kuro aktiv ist.
 - Jeder Server besitzt einen eigenen Eintrag unter `guilds`.
 - Persönlichkeiten werden unter `personas` definiert.
 - Keyword-Reaktionen befinden sich unter `keyword_rules`.
+- `bot_reply_limits` bestimmt auf wieviel Nachrichten der Bot mit anderen Bots kommunizieren darf. Wird nach Usernachrichten wieder resettet.
 
 ---
 

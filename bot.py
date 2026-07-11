@@ -4,12 +4,12 @@ import logging
 import os
 import re
 import random
+import hashlib
 from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-
 import discord
 from discord.ext import commands
 from openai import OpenAI
@@ -25,16 +25,26 @@ def load_config() -> dict[str, Any]:
     with CONFIG_PATH.open("r", encoding="utf-8") as f:
         return json.load(f)
 
-
 config = load_config()
 
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OWNER_USER_ID_RAW = os.getenv("KURO_OWNER_USER_ID", "").strip()
+
+try:
+    OWNER_USER_ID = int(OWNER_USER_ID_RAW)
+except ValueError:
+    OWNER_USER_ID = 0
+    
+def is_owner(user: discord.abc.User) -> bool:
+    return OWNER_USER_ID != 0 and user.id == OWNER_USER_ID
 
 if not DISCORD_TOKEN:
     raise RuntimeError("Discord Token fehlt.")
 if not OPENAI_API_KEY:
     raise RuntimeError("OpenAI API Key fehlt.")
+if OWNER_USER_ID == 0:
+    raise RuntimeError("KURO_OWNER_USER_ID fehlt oder ist ungültig.")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -49,16 +59,56 @@ bot = commands.Bot(
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-MAX_HISTORY_PER_CHANNEL = int(config.get("max_history_per_channel", 100))
-conversation_history: dict[int, deque[dict[str, str]]] = defaultdict(lambda: deque(maxlen=MAX_HISTORY_PER_CHANNEL))
-reply_lock = defaultdict(asyncio.Lock)
-bot_reply_counter = defaultdict(int)
-bot_reply_timeout = {}
-
 log.info("Autorisierte Server: %s", config.get("allowed_guild_ids", []))
 # ---------------------------------------------------------------------------
 # Multi-Guild helpers
 # ---------------------------------------------------------------------------
+MAX_HISTORY_PER_CHANNEL = int(config.get("max_history_per_channel", 50))
+HISTORY_FILE = Path("conversation_history.json")
+
+def load_conversation_history() -> dict[int, deque[dict[str, str]]]:
+    if not HISTORY_FILE.exists():
+        return defaultdict(lambda: deque(maxlen=MAX_HISTORY_PER_CHANNEL))
+
+    try:
+        data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        history = defaultdict(lambda: deque(maxlen=MAX_HISTORY_PER_CHANNEL))
+
+        for channel_id, messages in data.items():
+            history[int(channel_id)] = deque(messages, maxlen=MAX_HISTORY_PER_CHANNEL)
+
+        log.info(
+            "Konversationsverläufe geladen: %s Channels",
+            len(history)
+        )
+
+        return history
+
+    except Exception as e:
+        log.warning("Konversationsverläufe konnten nicht geladen werden: %s", e)
+        return defaultdict(lambda: deque(maxlen=MAX_HISTORY_PER_CHANNEL))
+
+
+def save_conversation_history() -> None:
+    data = {
+        str(channel_id): list(messages)
+        for channel_id, messages in conversation_history.items()
+    }
+
+    tmp_file = HISTORY_FILE.with_suffix(".tmp")
+
+    tmp_file.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+
+    tmp_file.replace(HISTORY_FILE)
+
+conversation_history = load_conversation_history()
+reply_lock = defaultdict(asyncio.Lock)
+bot_reply_counter = defaultdict(int)
+bot_reply_timeout = {}
+
 def is_allowed_guild(guild: discord.Guild | None) -> bool:
     if guild is None:
         return False
@@ -337,13 +387,19 @@ def get_keyword_reply(message: discord.Message) -> str | None:
 
     for rule in keyword_rules:
         pattern = rule.get("pattern")
-        response = rule.get("response", "")
+        responses = rule.get("responses")
+
+        if responses:
+            text = random.choice(responses)
+        else:
+            text = rule.get("response", "")
+
         if not pattern:
             continue
 
         match = re.search(pattern, message_content, re.IGNORECASE)
         if match:
-            text = response.replace("{bot_name}", bot_name)
+            text = text.replace("{bot_name}", bot_name)
             text = text.replace("{user}", user_name)
 
             for i, group in enumerate(match.groups(), start=1):
@@ -355,15 +411,16 @@ def get_keyword_reply(message: discord.Message) -> str | None:
 
 
 def should_reply_to_message(message: discord.Message) -> bool:
-    if message.author.bot:
-        return False
-
     if not is_channel_allowed(message):
         return False
 
     mention_required = config.get("mention_required", True)
+
     if mention_required:
-        return (bot.user in message.mentions if bot.user else False) or is_reply_to_bot(message)
+        return (
+            (bot.user in message.mentions if bot.user else False)
+            or is_reply_to_bot(message)
+        )
 
     return True
 
@@ -373,6 +430,31 @@ def sanitize_user_input(message: discord.Message) -> str:
     if bot.user:
         content = content.replace(f"<@{bot.user.id}>", "").replace(f"<@!{bot.user.id}>", "")
     return content.strip()
+
+
+def get_user_reference(user: discord.abc.User) -> str:
+    """
+    Erzeugt aus der Discord-User-ID eine stabile, pseudonyme Kennung.
+    Unterschiedliche Nutzer erhalten immer unterschiedliche Kennungen.
+    """
+    return hashlib.sha256(str(user.id).encode("utf-8")).hexdigest()[:12]
+
+
+def get_ai_user_identity(user: discord.abc.User) -> str:
+    """
+    Anzeigename für natürliche Gespräche plus stabile interne Kennung.
+    """
+    user_reference = get_user_reference(user)
+    
+    if is_owner(user):
+        identity = "verifizierter Besitzer, Kuros Meister und Tavernenbesitzer"
+    else:
+        identity = "normaler Nutzer"
+
+    return (
+        f"{user.display_name} "
+        f"[interne Nutzerkennung: {user_reference}; Identität: {identity}]"
+    )
 
 
 def make_openai_input(channel_id: int, user_name: str, user_text: str, image_urls: list[str] | None = None):
@@ -668,10 +750,11 @@ async def on_message(message: discord.Message):
     async with reply_lock[message.channel.id]:
         async with message.channel.typing():
             try:
+                ai_user_identity = get_ai_user_identity(message.author)
                 answer = await asyncio.to_thread(
                     call_openai,
                     message.channel.id,
-                    message.author.display_name,
+                    ai_user_identity,
                     user_text,
                     image_urls,
                 )
@@ -682,7 +765,7 @@ async def on_message(message: discord.Message):
                     f"OpenAI-Fehler in Channel {message.channel.id} von {message.author} ({message.author.id}): {e}"
                 )
                 await message.reply(
-                    "Nya... gerade ist etwas schiefgelaufen. Ich habe meinem Meister einen Hinweis hinterlassen. Versuch es gleich nochmal.",
+                    "Nya... gerade ist etwas schiefgelaufen. Ich habe in der Log einen Hinweis hinterlassen. Versuch es später nochmal.",
                     mention_author=False
                 )
                 return
@@ -692,13 +775,16 @@ async def on_message(message: discord.Message):
 
         conversation_history[message.channel.id].append({
             "role": "user",
-            "content": f"{message.author.display_name}: {user_text}"
+            "content": f"{get_ai_user_identity(message.author)}: {user_text}"
         })
         conversation_history[message.channel.id].append({
             "role": "assistant",
             "content": answer
         })
-
+        try:
+            await asyncio.to_thread(save_conversation_history)
+        except Exception as e:
+            log.warning("Konversationsverlauf konnte nicht gespeichert werden: %s", e)
         for chunk in split_message(answer):
             await message.reply(chunk, mention_author=False)
 
@@ -714,11 +800,11 @@ async def hilfe(ctx):
     await ctx.send(
         f"**Befehle**\n"
         f"`{prefix}ping`\n"
-        f"`{prefix}hilfe`\n"
+        f"`{prefix}hilfe` zeigt das hier an\n"
         f"`{prefix}modus`\n"
         f"`{prefix}setmodus <modus|auto>` (Admin)\n"
-        f"`{prefix}reset`\n"
-        f"`{prefix}keywords`\n"
+        f"`{prefix}reset` (Admin)\n" 
+        f"`{prefix}keywords` (Admin)\n"
         f"`{prefix}ask` per Slash-Command"
     )
 
@@ -761,20 +847,36 @@ async def setmodus(ctx, mode: str):
 
 
 @bot.command(name="reset")
+@commands.has_permissions(administrator=True)
 async def reset(ctx):
     conversation_history.pop(ctx.channel.id, None)
+    try:
+        await asyncio.to_thread(save_conversation_history)
+    except Exception as e:
+        log.warning("Konversationsverlauf konnte nicht gespeichert werden: %s", e)
     await ctx.send("Kontext für diesen Channel gelöscht.")
 
 
 @bot.command(name="keywords")
+@commands.has_permissions(administrator=True)
 async def keywords(ctx):
     rules = config.get("keyword_rules", [])
     if not rules:
         await ctx.send("Keine Keyword-Regeln aktiv.")
         return
+
     lines = ["**Aktive Keyword-Regeln**"]
+
     for i, rule in enumerate(rules, start=1):
-        lines.append(f"{i}. `{rule.get('pattern', '')}` → `{rule.get('response', '')}`")
+        if "responses" in rule:
+            response_text = f"{len(rule['responses'])} Antworten"
+        else:
+            response_text = rule.get("response", "")
+
+        lines.append(
+            f"{i}. `{rule.get('pattern', '')}` → {response_text}"
+        )
+
     await ctx.send("\n".join(lines[:25]))
 
 
@@ -807,10 +909,11 @@ async def ask(interaction: discord.Interaction, frage: str):
 
     async with reply_lock[interaction.channel_id]:
         try:
+            ai_user_identity = get_ai_user_identity(interaction.user)
             answer = await asyncio.to_thread(
                 call_openai,
                 interaction.channel_id,
-                interaction.user.display_name,
+                ai_user_identity,
                 frage,
             )
         except Exception as e:
@@ -822,10 +925,13 @@ async def ask(interaction: discord.Interaction, frage: str):
             await interaction.followup.send("Nya... gerade ist etwas schiefgelaufen. Versuch es gleich nochmal.")
             return
 
-    conversation_history[interaction.channel_id].append({"role": "user", "content": f"{interaction.user.display_name}: {frage}"})
+    if not answer:
+        answer = "Dazu habe ich gerade keine gute Antwort."
+    
+    conversation_history[interaction.channel_id].append({"role": "user", "content": f"{get_ai_user_identity(interaction.user)}: {frage}"})
     conversation_history[interaction.channel_id].append({"role": "assistant", "content": answer})
 
-    for chunk in split_message(answer or "Keine Antwort erhalten."):
+    for chunk in split_message(answer):
         await interaction.followup.send(chunk)
 
 
@@ -846,5 +952,27 @@ async def setmodus_error(ctx, error):
     else:
         await ctx.send(f"Fehler: {error}")
 
+@reset.error
+async def reset_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("Dafür brauchst du Administrator-Rechte.")
+    else:
+        log.exception(
+            "Fehler beim Befehl reset",
+            exc_info=error
+        )
+        await ctx.send("Beim Zurücksetzen ist ein Fehler aufgetreten.")
 
+
+@keywords.error
+async def keywords_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("Dafür brauchst du Administrator-Rechte.")
+    else:
+        log.exception(
+            "Fehler beim Befehl keywords",
+            exc_info=error
+        )
+        await ctx.send("Beim Anzeigen der Keywords ist ein Fehler aufgetreten.")
+        
 bot.run(DISCORD_TOKEN)

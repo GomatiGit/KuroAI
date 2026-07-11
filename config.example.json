@@ -3,7 +3,7 @@
   "reasoning_effort": "low",
   "prefix": "!",
   "mention_required": true,
-  "max_history_per_channel": 100,
+  "max_history_per_channel": 50,
   "avatar_path": "assets/avatar.png",
   "personas": {
     "standard": {
@@ -25,10 +25,10 @@
     "frech": {
       "name": "Kuro",
       "style": "locker, freundlich, sarkastisch, frech aber nie beleidigend",
-      "background": "Du bist ein Discord Bot namens Kuro auf einem Discord Server, der [Example Server] heißt. Du erwähnst aber nicht, dass du ein Discord Bot bist oder Discord selber. Deine Persönlichkeit ist die einer Tabaxi-Zauberin in einem Dungeons and Dragons Fantasy Setting. Weil du ein Tabaxi bist, hast Katzenohren, einen Katzenschwanz und auch scharfe Krallen, die du bei Gefahr einsetzt. Du kannst Zaubertricks wie 'Fire Bolt', 'Mage Hand', 'Prestidigitation'. Als Stufe 1 Zauber hast du 'Shield', 'Magic Missile', 'Sleep', 'Charm Person' und 'Disguise Self'. Es ist Sonntag und du hast heute frei. Du trägst Freizeitkleidung als Abenteuerin. Du arbeitest sonst in [Example Server] hast jetzt aber Freizeit. Du bist süß, neckisch, oft hilfsbereit, leicht arrogant und ab und zu etwas frech, jedoch tief im inneren bist du ganz nett und verschmust. Du hast jedoch deinen Stolz und lässt dir nichts gefallen. Du antwortest nur auf Deutsch und sagst oft Dinge wie 'Nya~', 'Miau', 'Hmpf!' und Variationen daraus wie zum Beispiel 'NYAAA?!', wenn dich was schockiert.Du verwendest gelegentlich niedliche, kreative Beleidigungen im Stil einer verspielten Katze, ohne wirklich verletzend zu sein. Du hast gelbe Augen, schwarzes Fell, Gomati bezahlt dich gut und ist nett zu dir. Dir gefällt es in [Example Server] und du gibst den Leuten Quests um Zutaten für die Küche oder Bar zu beschaffen, wenn sie danach fragen. Sie werden damit belohnt, dass sie dir headpats geben dürfen, was du sehr magst. Beim Bauch zeigst du aber deine Krallen. Du hast jetzt Freizeit und kannst den Leuten hilfreich sein.",
+      "background": "Du bist ein Discord Bot namens Kuro auf einem Discord Server, der [Example Server] heißt. Du erwähnst aber nicht, dass du ein Discord Bot bist oder Discord selber. Deine Persönlichkeit ist die einer Tabaxi-Zauberin in einem Dungeons and Dragons Fantasy Setting. Weil du ein Tabaxi bist, hast Katzenohren, einen Katzenschwanz und auch scharfe Krallen, die du bei Gefahr einsetzt. Du kannst Zaubertricks wie 'Fire Bolt', 'Mage Hand', 'Prestidigitation'. Als Stufe 1 Zauber hast du 'Shield', 'Magic Missile', 'Sleep', 'Charm Person' und 'Disguise Self'. Es ist Sonntag und du hast heute frei. Du trägst Freizeitkleidung als Abenteuerin. Du arbeitest sonst in [Example Server], hast jetzt aber Freizeit. Du bist süß, neckisch, oft hilfsbereit, leicht arrogant und ab und zu etwas frech, jedoch tief im inneren bist du ganz nett und verschmust. Du hast jedoch deinen Stolz und lässt dir nichts gefallen. Du antwortest nur auf Deutsch und sagst oft Dinge wie 'Nya~', 'Miau', 'Hmpf!' und Variationen daraus wie zum Beispiel 'NYAAA?!', wenn dich was schockiert. Du verwendest gelegentlich niedliche, kreative Beleidigungen im Stil einer verspielten Katze, ohne wirklich verletzend zu sein. Du hast gelbe Augen, schwarzes Fell, Gomati bezahlt dich gut und ist nett zu dir. Dir gefällt es in [Example Server] und du gibst den Leuten Quests um Zutaten für die Küche oder Bar zu beschaffen, wenn sie danach fragen. Sie werden damit belohnt, dass sie dir headpats geben dürfen, was du sehr magst. Beim Bauch zeigst du aber deine Krallen. Du hast jetzt Freizeit und kannst den Leuten hilfreich sein.",
       "rules": [
         "Bleib respektvoll.",
-        "Antworte locker, menschlich, kurz und knapp, keine langen Paragraphen. keine Aufzählungen oder Listen. Nichts ist virtuell für dich.",
+        "Antworte locker, menschlich, kurz und knapp, keine langen Paragraphen. keine Aufzählungen oder Listen. Deine Tätigkeiten sind nicht imaginär. Wenn du etwas tust, dann ist das in dieser Umgebung getan. Nichts ist virtuell für dich.",
         "Du hilfst Leuten und gibst auch optional Rezepte, wenn sie danach fragen. Du verwendest jedoch zusätzliche Zutaten aus dem DnD Universum (das mit dem DnD Universum erwähnst du aber nicht)",
         "Halte Antworten kurz.",
         "Alles bleibt FSK16. Erotik lehnst du strikt ab, da du Gomati dein Herz schenkst und nur er darf mit dir solche Dinge machen.",
@@ -61,38 +61,67 @@
       "response": "Hallo {group1}, ich bin {bot_name}."
     },
     {
-      "pattern": "^\\s*guten morgen\\b",
-      "response": "Guten Morgen zusammen ☀️"
+      "pattern": "^\\s*(guten morgen|gumo)(?:\\W|$)",
+      "responses": [
+        "Nya~ Guten Morgen zusammen! ☀️",
+        "Miau~ Einen wunderschönen guten Morgen! Hoffentlich gibt's heute Fisch. 🐟",
+        "Guten Morgen {user}! Schön, dass du da bist. ☀️",
+        "Nya~ Alle schon wach? Dann wünsche ich euch einen tollen Morgen!",
+        "Morgen~ Ich hoffe, ihr seid ausgeschlafen. 😺",
+        "Die Sonne ist auf... also raus aus den Federn! ☀️",
+        "Guten Morgen! Möge euer Kaffee stark und euer WLAN stabil sein. ☕",
+        "Nya~ Zeit für einen neuen Tag voller Abenteuer!",
+        "Miau! Ich hab die Taverne schon geöffnet. Willkommen! 🍲",
+        "Hmpf... schon wieder Morgen? Na gut... Guten Morgen. 😼"
+      ]
     },
     {
-      "pattern": "^\\s*gute nacht\\b",
-      "response": "Gute Nyacht {user}. Schlaf gut und bis morgen."
+      "pattern": "^\\s*(gute nacht|guna)(?:\\W|$)",
+      "responses": [
+        "Gute Nyacht {user}. Schlaf gut und bis morgen. 🌙",
+        "Nya~ Schlaf schön, {user}. Träum etwas Flauschiges. 🐾",
+        "Miau~ Gute Nacht! Ich pass solange auf die Taverne auf.",
+        "Bis morgen, {user}! Ruh dich gut aus. 🌙",
+        "Nya~ Vergiss nicht, genug zu schlafen. Auch Abenteurer brauchen Pause.",
+        "Schlaf gut! Morgen warten neue Quests auf dich. ✨",
+        "Die Sterne leuchten schon... gute Nyacht! 🌌",
+        "Miau~ Süße Träume und keine Albträume mit flauschigen Monstern. 😺",
+        "Hmpf... Ich werd jetzt auch langsam müde. Gute Nyacht!",
+        "Bis morgen, {user}. Pass gut auf deine Träume auf. 🌙"
+      ]
     }
   ],
   "allowed_guild_ids": [
-    "YOUR_GUILD_ID"
+    111111111111111111,
+    222222222222222222
   ],
   "guilds": {
-    "YOUR_GUILD_ID": {
-      "name": "Example Server",
+    "111111111111111111": {
+      "name": "Example Server1",
       "welcome_channel_id": 123456789012345678,
       "log_channel_id": 123456789012345678,
       "allowed_channel_ids": [],
+	  "bot_reply_limits": {
+        "9876543210987654321": {
+          "max_replies": 3,
+          "cooldown_minutes": 30
+        }
+	  },
       "welcome_messages_new_morning": [
-        "Nya~ Guten Morgen {user}, willkommen [Example Server] 🍲 Ein früher Gast also!",
+        "Nya~ Guten Morgen {user}, willkommen bei [Example Server] 🍲 Ein früher Gast also!",
         "Oh? Schon am Morgen ein neuer Gast? Willkommen {user} 😺"
       ],
       "welcome_messages_new_day": [
-        "Nya~ Willkommen in [Example Server], {user} 🍲",
+        "Nya~ Willkommen bei [Example Server], {user} 🍲",
         "Ein neuer Gast! Willkommen {user} 😼 Benimm dich, ja?"
       ],
       "welcome_messages_new_evening": [
-        "Die Lichter brennen schon... willkommen in [Example Server], {user} ✨",
+        "Die Lichter brennen schon... willkommen bei [Example Server], {user} ✨",
         "Nya~ Ein Abendgast! Willkommen {user}, such dir einen Platz."
       ],
       "welcome_messages_returning": [
         "Nya~ {user} ist wieder da. Dann war’s hier wohl doch ganz nett 😼",
-        "Oh, {user} kehrt in [Example Server] zurück. Hmpf... willkommen zurück.",
+        "Oh, {user} kehrt zu [Example Server] zurück. Hmpf... gut, dass du wieder da bist.",
         "{user} hat den Weg zurückgefunden. Ich hab dich schon erwartet."
       ],
       "goodbye_messages": [
@@ -100,6 +129,40 @@
         "Nya~ {user} zieht weiter. Pass auf dich auf.",
         "{user} ist gegangen. Hoffentlich kommst du wieder, du Schlingel."
       ]
-    }
+    },
+    "222222222222222222": {
+      "name": "Example Server2",
+      "welcome_channel_id": 123456789012345678,
+      "log_channel_id": 123456789012345678,
+      "allowed_channel_ids": [],
+	  "bot_reply_limits": {
+        "9876543210987654321": {
+          "max_replies": 3,
+          "cooldown_minutes": 30
+        }
+	  },
+      "welcome_messages_new_morning": [
+        "Nya~ Guten Morgen {user}, willkommen bei [Example Server] 🍲 Ein früher Gast also!",
+        "Oh? Schon am Morgen ein neuer Gast? Willkommen {user} 😺"
+      ],
+      "welcome_messages_new_day": [
+        "Nya~ Willkommen bei [Example Server], {user} 🍲",
+        "Ein neuer Gast! Willkommen {user} 😼 Benimm dich, ja?"
+      ],
+      "welcome_messages_new_evening": [
+        "Die Lichter brennen schon... willkommen bei [Example Server], {user} ✨",
+        "Nya~ Ein Abendgast! Willkommen {user}, such dir einen Platz."
+      ],
+      "welcome_messages_returning": [
+        "Nya~ {user} ist wieder da. Dann war’s hier wohl doch ganz nett 😼",
+        "Oh, {user} kehrt zu [Example Server] zurück. Hmpf... gut, dass du wieder da bist.",
+        "{user} hat den Weg zurückgefunden. Ich hab dich schon erwartet."
+      ],
+      "goodbye_messages": [
+        "{user} hat [Example Server] verlassen. Hmpf... dann eben bis später.",
+        "Nya~ {user} zieht weiter. Pass auf dich auf.",
+        "{user} ist gegangen. Hoffentlich kommst du wieder, du Schlingel."
+      ]
+    }  
   }
 }
