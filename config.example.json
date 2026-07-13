@@ -57,7 +57,7 @@
   "active_persona": "standard",
   "keyword_rules": [
     {
-      "pattern": "^\\s*ich bin\\s+([^.!?\\n]+)",
+      "pattern": "^\\s*ich bin\\s+([^\\s.!?,;:]+(?:\\s+[^\\s.!?,;:]+){0,6})\\s*[.!?]?\\s*$",
       "response": "Hallo {group1}, ich bin {bot_name}."
     },
     {
