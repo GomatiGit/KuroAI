@@ -57,6 +57,13 @@ bot = commands.Bot(
     case_insensitive=True,
 )
 
+SAFE_ALLOWED_MENTIONS = discord.AllowedMentions(
+    users=True,
+    roles=False,
+    everyone=False,
+    replied_user=False
+)
+
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 log.info("Autorisierte Server: %s", config.get("allowed_guild_ids", []))
@@ -702,7 +709,10 @@ async def on_message(message: discord.Message):
     # Keyword Replies
     keyword_reply = get_keyword_reply(message)
     if keyword_reply:
-        await message.channel.send(keyword_reply)
+        await message.channel.send(
+            keyword_reply,
+            allowed_mentions=SAFE_ALLOWED_MENTIONS
+        )
         return
 
     # Bild von Kuro (ohne OpenAI)
@@ -786,7 +796,11 @@ async def on_message(message: discord.Message):
         except Exception as e:
             log.warning("Konversationsverlauf konnte nicht gespeichert werden: %s", e)
         for chunk in split_message(answer):
-            await message.reply(chunk, mention_author=False)
+            await message.reply(
+                chunk,
+                mention_author=False,
+                allowed_mentions=SAFE_ALLOWED_MENTIONS
+            )
 
 
 @bot.command(name="ping")
@@ -932,7 +946,10 @@ async def ask(interaction: discord.Interaction, frage: str):
     conversation_history[interaction.channel_id].append({"role": "assistant", "content": answer})
 
     for chunk in split_message(answer):
-        await interaction.followup.send(chunk)
+        await interaction.followup.send(
+            chunk,
+            allowed_mentions=SAFE_ALLOWED_MENTIONS
+        )
 
 
 @say.error
