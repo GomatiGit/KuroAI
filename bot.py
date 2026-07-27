@@ -487,6 +487,32 @@ def call_openai(channel_id: int, user_name: str, user_text: str, image_urls: lis
         reasoning={"effort": config.get("reasoning_effort", "low")},
         input=make_openai_input(channel_id, user_name, user_text, image_urls=image_urls),
     )
+    
+    usage = response.usage
+
+    if usage:
+        cached_tokens = 0
+        reasoning_tokens = 0
+
+        if usage.input_tokens_details:
+            cached_tokens = usage.input_tokens_details.cached_tokens or 0
+
+        if usage.output_tokens_details:
+            reasoning_tokens = usage.output_tokens_details.reasoning_tokens or 0
+
+        log.info(
+            "OpenAI Tokens | Modell: %s | Channel: %s | "
+            "Input: %s | Cached: %s | Output: %s | "
+            "Reasoning: %s | Gesamt: %s",
+            response.model,
+            channel_id,
+            usage.input_tokens,
+            cached_tokens,
+            usage.output_tokens,
+            reasoning_tokens,
+            usage.total_tokens,
+        )
+     
     return (response.output_text or "").strip()
 
 
