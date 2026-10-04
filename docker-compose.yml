@@ -1,12 +1,9 @@
 services:
   kuroai:
-    command: |-
-      sh -c "pip install --no-cache-dir -r requirements.txt &&
-             python bot_multiserver.py"
-
-    build: .
+    image: ghcr.io/gomatigit/kuroai:latest
     container_name: kuroai
     restart: unless-stopped
+    pull_policy: always
     working_dir: /app
 
     environment:
@@ -15,6 +12,7 @@ services:
       KURO_OWNER_USER_ID: ${KURO_OWNER_USER_ID}
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
       KURO_VOICE_ID: ${KURO_VOICE_ID}
+      KURO_DATA_DIR: /app/data
 
     volumes:
-      - ./:/app
+      - ./data:/app/data

@@ -4,10 +4,7 @@ on:
   push:
     branches:
       - main
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  workflow_dispatch:
 
 jobs:
   build:
@@ -34,4 +31,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/gomatigit/kuroai:latest
+            ghcr.io/gomatigit/kuroai:${{ github.sha }}

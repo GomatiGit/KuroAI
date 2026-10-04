@@ -14,18 +14,31 @@ import discord
 from discord.ext import commands
 from openai import OpenAI
 
-CONFIG_PATH = Path("config.json")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+DATA_DIR = Path(os.getenv("KURO_DATA_DIR", "."))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+CONFIG_PATH = DATA_DIR / "config.json"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 log = logging.getLogger("discord-gpt-bot")
 
 
 def load_config() -> dict[str, Any]:
     if not CONFIG_PATH.exists():
-        raise FileNotFoundError("config.json fehlt. Kopiere config.example.json nach config.json.")
+        raise FileNotFoundError(
+            f"{CONFIG_PATH} fehlt. "
+            "Kopiere config.example.json als config.json in das Datenverzeichnis."
+        )
+
     with CONFIG_PATH.open("r", encoding="utf-8") as f:
         return json.load(f)
 
+
 config = load_config()
+
 
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
@@ -71,7 +84,7 @@ log.info("Autorisierte Server: %s", config.get("allowed_guild_ids", []))
 # Multi-Guild helpers
 # ---------------------------------------------------------------------------
 MAX_HISTORY_PER_CHANNEL = int(config.get("max_history_per_channel", 50))
-HISTORY_FILE = Path("conversation_history.json")
+HISTORY_FILE = DATA_DIR / "conversation_history.json"
 
 def load_conversation_history() -> dict[int, deque[dict[str, str]]]:
     if not HISTORY_FILE.exists():
@@ -239,7 +252,7 @@ async def send_log_message(guild: discord.Guild | None, text: str) -> None:
         log.warning("Log-Nachricht konnte nicht gesendet werden: %s", e)
 
 
-GHETTO_DAY_FILE = Path("ghetto_day.json")
+GHETTO_DAY_FILE = DATA_DIR / "ghetto_day.json"
 
 
 def get_or_create_ghetto_day() -> int:
@@ -315,8 +328,8 @@ def build_personality_text() -> str:
     )
 
 
-KNOWN_MEMBERS_FILE = Path("known_members.json")
-MODE_OVERRIDE_FILE = Path("mode_override.json")
+KNOWN_MEMBERS_FILE = DATA_DIR / "known_members.json"
+MODE_OVERRIDE_FILE = DATA_DIR / "mode_override.json"
 
 
 def load_known_members() -> dict[str, list[int]]:
@@ -568,7 +581,7 @@ async def maybe_set_avatar_once():
     avatar_path = config.get("avatar_path", "")
     if not avatar_path:
         return
-    marker_file = Path(".avatar_applied")
+    marker_file = DATA_DIR / ".avatar_applied"
     if marker_file.exists():
         return
     path = Path(avatar_path)
