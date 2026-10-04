@@ -2,15 +2,19 @@ services:
   kuroai:
     command: |-
       sh -c "pip install --no-cache-dir -r requirements.txt &&
-             python bot.py"
+             python bot_multiserver.py"
+
     build: .
     container_name: kuroai
-    image: python:3.11-slim
     restart: unless-stopped
     working_dir: /app
+
     environment:
-      DISCORD_BOT_TOKEN: "DEIN_DISCORD_TOKEN"
-      OPENAI_API_KEY: "DEIN_OPENAI_API_KEY"
-      KURO_OWNER_USER_ID: "DEINE_DISCORD_USER_ID"
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      KURO_OWNER_USER_ID: ${KURO_OWNER_USER_ID}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
+      KURO_VOICE_ID: ${KURO_VOICE_ID}
+
     volumes:
       - ./:/app
