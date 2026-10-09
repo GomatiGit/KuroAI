@@ -3,12 +3,20 @@ config.json
 .env
 *.env
 
+# Persistente Live-Daten
+data/
+
+
 # Runtime-Dateien
 known_members.json
 mode_override.json
 ghetto_day.json
 conversation_history.json
 .avatar_applied
+
+# Lokale testdateien
+test_elevenlabs.py
+kuro_test.mp3
 
 # Python
 __pycache__/
