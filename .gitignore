@@ -16,6 +16,7 @@ conversation_history.json
 
 # Lokale testdateien
 test_elevenlabs.py
+docker-compose.local.yml
 kuro_test.mp3
 
 # Python
