@@ -318,10 +318,21 @@ Alternativ kann ein Bild auch als Antwort auf eine Nachricht von Kuro gesendet w
 
 ---
 
+## 📊 Discord-Umfragen per Prompt
+
+Erstelle echte Discord-Umfragen durch eine Nachricht an Kuro oder über `/ask` – mit 2–10 Antwortmöglichkeiten, einstellbarer Laufzeit und optionaler Mehrfachauswahl. Die erforderlichen Kanalrechte werden automatisch geprüft.
+
+---
+
 ## 🛣️ Roadmap
 
 - [ ] Optionale ElevenLabs-Sprachausgabe
-- [ ] Bessere Personalisierung unterteilt nach einzelnen Discord Servern/Guilds
+- [x] Bessere Personalisierung unterteilt nach einzelnen Discord Servern/Guilds durch zusätzliche serverspezifische Hintergrundinformationen
+- [x] Optionales Owner-Profil für individuelle Namen und Hintergrundinformationen in der privaten Konfiguration
+- [x] Discord-Umfragen per Prompt oder `/ask` erstellen, einschließlich Laufzeit, Mehrfachauswahl und Berechtigungsprüfung
+- [x] Nachrichten mit Zeitkontext, sodass der Bot die Tageszeit und/oder Datum interpretieren kann
+- [x] Temporäre Discord Gäste werden über Einladungslink individuell gegrüßt
+- [ ] Neue Personalisierungs- und Umfragefunktionen im laufenden Discord-Betrieb testen
 
 ---
 
