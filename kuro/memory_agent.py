@@ -20,6 +20,7 @@ import re
 import time
 from typing import Any, Callable
 
+from .llm import LLMUnavailable
 from .memory import KINDS, MemoryStore
 from .prompts import sanitize_untrusted
 
@@ -181,6 +182,9 @@ class MemoryAgent:
                 self._running.discard(channel_id)
         except asyncio.CancelledError:
             raise
+        except LLMUnavailable:
+            # Kuro "schläft": Die Nachrichten bleiben liegen und werden später ausgewertet.
+            log.info("Gedächtnis-Agent wartet: Sprachmodell nicht erreichbar (Kanal %s)", channel_id)
         except Exception:
             log.exception("Gedächtnis-Agent für Kanal %s fehlgeschlagen", channel_id)
         if channel_id in self._dirty:

@@ -11,7 +11,7 @@ import pytest
 discord = pytest.importorskip("discord")
 
 from conftest import ROOT, run  # noqa: E402
-from kuro.llm import ChatResult  # noqa: E402
+from kuro.llm import ChatResult, LLMUnavailable  # noqa: E402
 
 OWNER_ID = 4242
 GUILD_ID = 111111111111111111
@@ -66,6 +66,7 @@ def test_without_llm_section_it_stays_on_openai(tmp_path, monkeypatch):
     assert module.LLM_CONFIG["model"] == config["model"]
     assert module.llm.extra_body == {"reasoning_effort": config["reasoning_effort"]}
     assert "temperature" not in module.llm.params
+    assert module.LLM_CONFIG["health_check_seconds"] == 0, "keine Dauerprüfung gegen OpenAI"
     assert module.memory_agent is None, "ohne memory-Bereich keine zusätzlichen OpenAI-Aufrufe"
     module.memory.close()
 
@@ -311,4 +312,59 @@ def test_images_are_embedded_for_local_models(tmp_path, monkeypatch):
 
     urls = run(scenario())
     assert len(urls) == 1 and urls[0].startswith("data:image/png;base64,iVBORw0KGgo")
+    bot.memory.close()
+
+
+def test_kuro_sleeps_when_the_model_is_unreachable(tmp_path, monkeypatch):
+    bot = load_bot(tmp_path, monkeypatch, overrides={"mention_required": False}, name="bot_sleep")
+
+    class Typing:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    channel = fake_channel(556)
+    channel.typing = lambda: Typing()
+    replies, reactions = [], []
+
+    async def reply(text, **kwargs):
+        replies.append(text)
+
+    async def add_reaction(emoji):
+        reactions.append(emoji)
+
+    async def no_commands(message):
+        return None
+
+    async def asleep(messages, tools=None, **kwargs):
+        bot.llm._set_available(False)
+        raise LLMUnavailable("Rechner aus")
+
+    monkeypatch.setattr(bot.bot, "process_commands", no_commands)
+    monkeypatch.setattr(bot.llm, "chat", asleep)
+    message = SimpleNamespace(
+        author=fake_user(9001, "Marbus"), guild=SimpleNamespace(id=GUILD_ID, name="Taverne", me=None),
+        channel=channel, content="Kuro?", mentions=[], reference=None, attachments=[], reply=reply,
+        add_reaction=add_reaction,
+    )
+
+    async def scenario():
+        await bot.on_message(message)
+        await bot.on_message(message)
+        status_asleep = bot.build_presence(12)
+        await bot.handle_llm_state_change(True)      # Aufwachen setzt die Zurückhaltung zurück
+        bot.llm.available = True
+        status_awake = bot.build_presence(12)
+        await bot.on_message(message)
+        return status_asleep, status_awake
+
+    status_asleep, status_awake = run(scenario())
+    assert len(replies) == 2 and all(r in bot.LLM_CONFIG["sleep_messages"] for r in replies)
+    assert reactions == ["💤"], "zweite Nachricht im selben Kanal bekommt nur eine Reaktion"
+    assert bot.memory.recent_messages(556) == [], "Schlaf-Antworten landen nicht im Verlauf"
+    assert status_asleep[0] == discord.Status.idle and "Schläft" in status_asleep[1].name
+    assert status_awake[0] == discord.Status.online and "12 Gäste" in status_awake[1].name
+    assert bot.LLM_CONFIG["health_check_seconds"] == 60
     bot.memory.close()

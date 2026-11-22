@@ -6,6 +6,7 @@ import os
 import re
 import random
 import hashlib
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,7 @@ import discord
 from discord.ext import commands
 
 from kuro import prompts as kuro_prompts
-from kuro.llm import LLMClient, chat_tool
+from kuro.llm import LLMClient, LLMUnavailable, chat_tool
 from kuro.memory import MemoryStore
 from kuro.memory_agent import MemoryAgent
 from kuro.settings import resolve_llm, section
@@ -149,6 +150,99 @@ def load_style_examples() -> list[dict[str, str]]:
 
 
 STYLE_EXAMPLES = load_style_examples()
+
+# ---------------------------------------------------------------------------
+# Kuro schläft, wenn der Rechner mit dem Sprachmodell nicht erreichbar ist
+# ---------------------------------------------------------------------------
+sleep_reply_times: dict[int, float] = {}
+
+
+def pick_sleep_message() -> str:
+    messages = [m for m in LLM_CONFIG.get("sleep_messages", []) if isinstance(m, str) and m.strip()]
+    return random.choice(messages) if messages else "Zzz… 💤"
+
+
+def should_send_sleep_text(channel_id: int) -> bool:
+    """Schlaf-Text nur ab und zu je Kanal; dazwischen genügt eine 💤-Reaktion."""
+    cooldown = float(LLM_CONFIG.get("sleep_reply_cooldown_minutes", 10)) * 60
+    now = time.monotonic()
+    last = sleep_reply_times.get(channel_id)
+
+    if last is not None and now - last < cooldown:
+        return False
+
+    sleep_reply_times[channel_id] = now
+    return True
+
+
+def build_presence(guest_count: int) -> tuple[discord.Status, discord.CustomActivity]:
+    if llm.available:
+        return (
+            discord.Status.online,
+            discord.CustomActivity(name=f"Bedient {guest_count} Gäste in der Taverne"),
+        )
+
+    return (
+        discord.Status.idle,
+        discord.CustomActivity(name=str(LLM_CONFIG.get("sleep_status") or "Schläft 💤")),
+    )
+
+
+async def handle_llm_state_change(available: bool) -> None:
+    """Status anpassen und den Wechsel einmal im Log-Channel vermerken."""
+    if available:
+        sleep_reply_times.clear()
+    elif voice_manager is not None:
+        # Eine schlafende Kuro bleibt nicht lauschend im Sprachkanal sitzen.
+        for guild_id in list(voice_manager.sessions):
+            text_channel = voice_manager.text_channels.get(guild_id)
+            await voice_manager.leave(guild_id)
+            if text_channel is not None:
+                try:
+                    await text_channel.send(pick_sleep_message())
+                except discord.HTTPException:
+                    pass
+
+    await update_server_status()
+
+    text = (
+        "☀️ Das Sprachmodell ist wieder erreichbar – Kuro ist wach."
+        if available
+        else "😴 Das Sprachmodell ist nicht erreichbar – Kuro schläft, bis es wieder da ist."
+    )
+    for guild in list(bot.guilds):
+        if is_allowed_guild(guild):
+            await send_log_message(guild, text)
+
+
+def on_llm_state_change(available: bool) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    task = loop.create_task(handle_llm_state_change(available))
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
+
+
+llm.on_state_change = on_llm_state_change
+
+
+async def llm_watchdog() -> None:
+    """Prüft regelmäßig, ob das Sprachmodell erreichbar ist (Aufwachen/Einschlafen)."""
+    interval = float(LLM_CONFIG.get("health_check_seconds", 0) or 0)
+    if interval <= 0:
+        return
+
+    await bot.wait_until_ready()
+
+    while not bot.is_closed():
+        try:
+            await llm.ping()
+        except Exception:
+            log.exception("Erreichbarkeitsprüfung des Sprachmodells fehlgeschlagen")
+        await asyncio.sleep(interval)
 
 reply_lock = defaultdict(asyncio.Lock)
 bot_reply_counter = defaultdict(int)
@@ -1011,11 +1105,12 @@ async def update_server_status():
         if not member.bot
     )
 
-    status_text = f"Bedient {guest_count} Gäste in der Taverne"
+    status, activity = build_presence(guest_count)
 
     try:
         await bot.change_presence(
-            activity=discord.CustomActivity(name=status_text)
+            status=status,
+            activity=activity,
         )
     except discord.HTTPException as exc:
         log.warning("Status konnte nicht gesetzt werden: %s", exc)
@@ -1063,6 +1158,9 @@ async def on_ready():
 
     if not hasattr(bot, "midnight_task"):
         bot.midnight_task = asyncio.create_task(midnight_status_updater())
+
+    if not hasattr(bot, "llm_watchdog_task"):
+        bot.llm_watchdog_task = asyncio.create_task(llm_watchdog())
 
 @bot.event
 async def on_guild_join(guild: discord.Guild):
@@ -1275,6 +1373,16 @@ async def on_message(message: discord.Message):
                         message.channel,
                         message.author,
                     )
+            except LLMUnavailable:
+                # Rechner mit dem Sprachmodell ist aus: Kuro schläft.
+                if should_send_sleep_text(message.channel.id):
+                    await message.reply(pick_sleep_message(), mention_author=False)
+                else:
+                    try:
+                        await message.add_reaction("💤")
+                    except discord.HTTPException:
+                        pass
+                return
             except Exception as e:
                 log.exception("KI-Fehler")
                 await send_log_message(
@@ -1488,6 +1596,9 @@ async def ask(interaction: discord.Interaction, frage: str):
                     interaction.channel,
                     interaction.user,
                 )
+        except LLMUnavailable:
+            await interaction.followup.send(pick_sleep_message())
+            return
         except Exception as e:
             log.exception("KI-Fehler")
             await send_log_message(
@@ -1704,6 +1815,10 @@ async def komm(ctx):
 
     if not may_use_voice_join(ctx):
         await ctx.send("Dafür fehlt dir die Berechtigung.")
+        return
+
+    if not llm.available:
+        await ctx.send(pick_sleep_message())
         return
 
     voice_state = ctx.author.voice

@@ -11,7 +11,9 @@ from aiohttp import web  # noqa: E402
 from aiohttp.test_utils import TestServer  # noqa: E402
 
 from conftest import run  # noqa: E402
-from kuro.llm import LLMClient, LLMError, ThinkFilter, chat_tool, strip_think  # noqa: E402
+from kuro.llm import (  # noqa: E402
+    LLMClient, LLMError, LLMUnavailable, ThinkFilter, chat_tool, strip_think,
+)
 from kuro.voice.stt import STTClient, clean_transcript  # noqa: E402
 from kuro.voice.tts import TTSClient, parse_wav_header  # noqa: E402
 
@@ -207,5 +209,49 @@ def test_params_set_to_null_are_never_sent_even_as_override():
         for sent in state["chat"]:
             assert "temperature" not in sent["body"] and "max_tokens" not in sent["body"]
             assert sent["body"]["reasoning_effort"] == "low"
+
+    run(with_server(scenario))
+
+
+def test_unreachable_endpoint_means_asleep_and_is_not_hammered():
+    async def scenario(base, state):
+        import time
+        changes = []
+        llm = LLMClient("http://127.0.0.1:9/v1", "m", connect_timeout=1, retry_after=30)
+        llm.on_state_change = changes.append
+        with pytest.raises(LLMUnavailable):
+            await llm.chat([{"role": "user", "content": "hi"}])
+        assert llm.available is False and changes == [False]
+
+        started = time.perf_counter()
+        with pytest.raises(LLMUnavailable, match="Wartezeit"):
+            await llm.chat([{"role": "user", "content": "hi"}])
+        with pytest.raises(LLMUnavailable):
+            async for _ in llm.stream([{"role": "user", "content": "hi"}]):
+                pass
+        assert time.perf_counter() - started < 0.2, "während der Wartezeit wird nicht erneut verbunden"
+        assert await llm.ping() is False and changes == [False], "kein doppeltes Einschlafen"
+        await llm.close()
+
+    run(with_server(scenario))
+
+
+def test_ping_wakes_her_up_and_http_errors_do_not_count_as_asleep():
+    async def scenario(base, state):
+        changes = []
+        llm = LLMClient(base, "m", retry_after=30)
+        llm.on_state_change = changes.append
+        llm._set_available(False)                      # eben noch nicht erreichbar
+        assert await llm.ping() is True
+        assert llm.available is True and changes == [False, True]
+        result = await llm.chat([{"role": "user", "content": "hi"}])   # sofort wieder nutzbar
+        assert result.text == "Hmpf. Na gut."
+
+        broken = LLMClient(base, "kaputt")
+        with pytest.raises(LLMError) as info:
+            await broken.chat([{"role": "user", "content": "hi"}])
+        assert not isinstance(info.value, LLMUnavailable) and broken.available is True
+        await llm.close()
+        await broken.close()
 
     run(with_server(scenario))

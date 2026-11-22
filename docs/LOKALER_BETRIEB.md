@@ -163,6 +163,60 @@ steht – er würde sonst zusätzliche Tokens kosten.
 | `extra_body` | zusätzliche Request-Felder, z. B. `{"reasoning_effort": "low"}` |
 | `memory_model` | optional ein kleineres Modell nur für den Gedächtnis-Agenten |
 | `api_key_env` | Name der Umgebungsvariable mit dem Schlüssel (Standard `KURO_LLM_API_KEY`) |
+| `sleep_messages`, `sleep_status` | Texte, wenn das Modell nicht erreichbar ist (siehe unten) |
+| `connect_timeout`, `retry_after_seconds`, `health_check_seconds`, `sleep_reply_cooldown_minutes` | Zeitverhalten beim Einschlafen und Aufwachen |
+
+### Bot auf der NAS, Grafikkarte im PC
+
+Der Bot und die Datenbank bleiben auf der NAS; Sprachmodell, Stimme und
+Spracherkennung laufen auf dem PC mit der Grafikkarte. In der `config.json`
+steht dann überall die IP des PCs, z. B. `"base_url": "http://192.168.1.50:11434/v1"`.
+
+**Ollama unter Windows für das Netz freigeben.** Ollama liest seine
+Einstellungen aus den Windows-Umgebungsvariablen:
+
+1. Ollama beenden (Symbol in der Taskleiste → Quit).
+2. Windows-Einstellungen öffnen, nach „Umgebungsvariablen“ suchen und
+   „Umgebungsvariablen für dieses Konto bearbeiten“ wählen.
+3. Zwei Variablen neu anlegen:
+   - `OLLAMA_HOST` = `0.0.0.0` (sonst nimmt Ollama nur Anfragen vom PC selbst an)
+   - `OLLAMA_CONTEXT_LENGTH` = `16384`
+4. Ollama wieder starten.
+
+Dasselbe in der PowerShell: `setx OLLAMA_HOST 0.0.0.0` und
+`setx OLLAMA_CONTEXT_LENGTH 16384`, danach Ollama neu starten. Die
+Kontextlänge lässt sich alternativ in den Einstellungen der Ollama-App per
+Schieberegler setzen.
+
+Prüfen, von der NAS aus: `curl http://<PC-IP>:11434/api/version`. Mit
+`ollama ps` auf dem PC sieht man bei geladenem Modell die tatsächlich
+genutzte Kontextlänge.
+
+Ollama hat keine Anmeldung. Deshalb in der Windows-Firewall Port 11434 nur
+für die IP der NAS freigeben und dem PC im Router eine feste IP geben.
+
+### Wenn der PC aus ist: Kuro schläft
+
+Erreicht der Bot das Sprachmodell nicht, ist das kein Fehler, sondern
+Schlafenszeit:
+
+- Kuro antwortet mit einem kurzen Schlaf-Text in ihrer Rolle
+  (`llm.sleep_messages`), je Kanal höchstens alle zehn Minuten; dazwischen
+  reagiert sie nur mit 💤. Schlaf-Antworten landen nicht im Verlauf.
+- Ihr Status wechselt auf abwesend mit dem Text aus `llm.sleep_status`.
+- Im Log-Channel steht je eine Zeile beim Einschlafen und beim Aufwachen.
+- Sie verlässt Sprachkanäle; `!komm` beantwortet sie schlafend.
+- Begrüßungen und Keyword-Antworten funktionieren weiter – die brauchen kein
+  Modell.
+- Der Gedächtnis-Agent holt Liegengebliebenes nach, sobald das Modell wieder
+  da ist.
+
+Der Bot prüft alle 60 Sekunden, ob das Modell erreichbar ist
+(`health_check_seconds`), und wartet beim Verbinden höchstens 4 Sekunden
+(`connect_timeout`). Nach einem Fehlversuch fragt er 45 Sekunden lang gar
+nicht erst an (`retry_after_seconds`), damit niemand auf einen ausgeschalteten
+Rechner warten muss. Kuro wacht also spätestens eine Minute nach dem Start von
+Ollama auf.
 
 Unterschiede zum bisherigen Prompt-Aufbau, die für lokale Modelle nötig sind:
 
@@ -356,6 +410,28 @@ python -m pytest
 Die Tests brauchen weder Discord noch eine Grafikkarte: LLM-, STT- und
 TTS-Client laufen gegen einen lokalen Testserver, die Sprachsitzung gegen
 Attrappen, das Gedächtnis gegen eine temporäre Datenbank.
+
+Optional lassen sich die Tests bei jedem Push von GitHub ausführen. Dazu die
+Datei `.github/workflows/tests.yml` mit diesem Inhalt anlegen:
+
+```yaml
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+```
 
 ## 8. Bekannte Grenzen
 

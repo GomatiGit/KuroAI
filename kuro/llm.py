@@ -12,8 +12,9 @@ import asyncio
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Callable
 
 import aiohttp
 
@@ -24,6 +25,10 @@ _THINK_BLOCK = re.compile(r"<think>.*?</think>\s*", re.DOTALL | re.IGNORECASE)
 
 class LLMError(RuntimeError):
     """Der Endpunkt war nicht erreichbar oder hat einen Fehler gemeldet."""
+
+
+class LLMUnavailable(LLMError):
+    """Der Rechner mit dem Sprachmodell antwortet nicht (aus, Standby, Netz weg)."""
 
 
 @dataclass
@@ -115,6 +120,8 @@ class LLMClient:
         params: dict[str, Any] | None = None,
         extra_body: dict[str, Any] | None = None,
         timeout: float = 120.0,
+        connect_timeout: float = 4.0,
+        retry_after: float = 45.0,
         max_concurrency: int = 2,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -125,9 +132,18 @@ class LLMClient:
         # als Einzelfall-Vorgabe (OpenAIs Reasoning-Modelle lehnen sie ab).
         self._never_send = {k for k, v in (params or {}).items() if v is None}
         self.extra_body = dict(extra_body or {})
-        self._timeout = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=timeout)
+        self._connect_timeout = float(connect_timeout)
+        self._timeout = aiohttp.ClientTimeout(
+            total=None, sock_connect=self._connect_timeout, sock_read=timeout
+        )
         self._session: aiohttp.ClientSession | None = None
         self._sem = asyncio.Semaphore(max(1, max_concurrency))
+        # Erreichbarkeit: Nach einem Verbindungsfehler wird ``retry_after`` Sekunden
+        # lang gar nicht erst angefragt – so wartet niemand auf einen Rechner, der aus ist.
+        self.available = True
+        self.retry_after = float(retry_after)
+        self._down_until = 0.0
+        self.on_state_change: Callable[[bool], None] | None = None
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "LLMClient":
@@ -142,6 +158,8 @@ class LLMClient:
             },
             extra_body=cfg.get("extra_body"),
             timeout=float(cfg.get("request_timeout", 120)),
+            connect_timeout=float(cfg.get("connect_timeout", 4)),
+            retry_after=float(cfg.get("retry_after_seconds", 45)),
         )
 
     # -- intern ---------------------------------------------------------
@@ -180,6 +198,43 @@ class LLMClient:
             payload["stream"] = True
         return payload
 
+    def _set_available(self, available: bool) -> None:
+        if available:
+            self._down_until = 0.0
+        else:
+            self._down_until = time.monotonic() + self.retry_after
+        if available != self.available:
+            self.available = available
+            log.warning(
+                "Sprachmodell %s: %s", self.base_url,
+                "wieder erreichbar" if available else "nicht erreichbar",
+            )
+            if self.on_state_change is not None:
+                try:
+                    self.on_state_change(available)
+                except Exception:
+                    log.exception("Reaktion auf Zustandswechsel fehlgeschlagen")
+
+    def _check_awake(self) -> None:
+        if time.monotonic() < self._down_until:
+            raise LLMUnavailable(f"LLM-Endpunkt {self.base_url} nicht erreichbar (Wartezeit läuft).")
+
+    def _unavailable(self, exc: BaseException) -> LLMUnavailable:
+        self._set_available(False)
+        return LLMUnavailable(f"LLM-Endpunkt {self.base_url} nicht erreichbar: {exc}")
+
+    async def ping(self) -> bool:
+        """Prüft, ob der Endpunkt antwortet (``GET /models``), und merkt sich das Ergebnis."""
+        timeout = aiohttp.ClientTimeout(total=self._connect_timeout + 4)
+        try:
+            async with self._get_session().get(f"{self.base_url}/models", timeout=timeout) as resp:
+                await resp.read()
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            self._set_available(False)
+            return False
+        self._set_available(True)
+        return True
+
     @staticmethod
     async def _raise_for_status(resp: aiohttp.ClientResponse) -> None:
         if resp.status < 400:
@@ -204,13 +259,17 @@ class LLMClient:
             model=model, overrides=overrides,
         )
         url = f"{self.base_url}/chat/completions"
+        self._check_awake()
         async with self._sem:
             try:
                 async with self._get_session().post(url, json=payload) as resp:
+                    self._set_available(True)
                     await self._raise_for_status(resp)
                     data = await resp.json(content_type=None)
-            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-                raise LLMError(f"LLM-Endpunkt {self.base_url} nicht erreichbar: {exc}") from exc
+            except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as exc:
+                raise self._unavailable(exc) from exc
+            except aiohttp.ClientError as exc:
+                raise LLMError(f"Fehler am LLM-Endpunkt {self.base_url}: {exc}") from exc
 
         try:
             message = data["choices"][0]["message"]
@@ -258,9 +317,11 @@ class LLMClient:
         )
         url = f"{self.base_url}/chat/completions"
         think = ThinkFilter()
+        self._check_awake()
         async with self._sem:
             try:
                 async with self._get_session().post(url, json=payload) as resp:
+                    self._set_available(True)
                     await self._raise_for_status(resp)
                     async for raw in resp.content:
                         line = raw.decode("utf-8", "replace").strip()
@@ -277,8 +338,10 @@ class LLMClient:
                         piece = think.feed(delta.get("content") or "")
                         if piece:
                             yield piece
-            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-                raise LLMError(f"LLM-Endpunkt {self.base_url} nicht erreichbar: {exc}") from exc
+            except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as exc:
+                raise self._unavailable(exc) from exc
+            except aiohttp.ClientError as exc:
+                raise LLMError(f"Fehler am LLM-Endpunkt {self.base_url}: {exc}") from exc
         rest = think.flush()
         if rest:
             yield rest

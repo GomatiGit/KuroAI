@@ -23,6 +23,22 @@ DEFAULTS: dict[str, Any] = {
         "top_p": 0.95,
         "max_tokens": 700,
         "request_timeout": 120,
+        # Ist der Rechner mit dem Sprachmodell aus, "schläft" Kuro:
+        # so lange auf die Verbindung warten, dann als nicht erreichbar werten …
+        "connect_timeout": 4,
+        # … und erst nach so vielen Sekunden erneut versuchen.
+        "retry_after_seconds": 45,
+        # Im Hintergrund prüfen, ob das Modell (wieder) da ist; 0 = aus.
+        "health_check_seconds": 60,
+        # Pro Kanal höchstens so oft mit einem Schlaf-Text antworten, sonst nur 💤.
+        "sleep_reply_cooldown_minutes": 10,
+        "sleep_status": "Schläft tief und fest 💤",
+        "sleep_messages": [
+            "*liegt zusammengerollt neben dem Kamin und schnurrt leise im Schlaf* Mrrr… später… 💤",
+            "Zzz… *ein Ohr zuckt, dann dreht sich Kuro auf die andere Seite* …nyaa… noch fünf Minuten… 💤",
+            "*schläft tief und fest auf dem Tresen, der Schwanz zuckt im Traum* …Lachs… meiner… 💤",
+            "*hebt nicht einmal ein Augenlid und zieht sich die Decke über die Ohren* Hmpf… schlafe… 💤",
+        ],
         # Kann das Modell Bilder sehen bzw. Werkzeuge (Umfragen) aufrufen?
         "vision": True,
         "tools": True,
@@ -145,6 +161,9 @@ def resolve_llm(config: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, 
             "top_p": None,
             "max_tokens": None,
             "extra_body": {"reasoning_effort": config.get("reasoning_effort", "low")},
+            # OpenAI braucht keine Dauerprüfung und etwas mehr Geduld beim Verbinden.
+            "connect_timeout": 10,
+            "health_check_seconds": 0,
         })
         cfg["api_key"] = (env.get("OPENAI_API_KEY", "") or "").strip()
         cfg["legacy_openai"] = True

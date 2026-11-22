@@ -4,7 +4,7 @@ import json
 import pytest
 
 from conftest import run
-from kuro.llm import ChatResult
+from kuro.llm import ChatResult, LLMUnavailable
 from kuro.memory import MemoryStore
 from kuro.memory_agent import MemoryAgent, parse_ops
 
@@ -131,3 +131,19 @@ def test_notify_runs_after_threshold_and_waits_while_voice_is_busy(store):
         agent.close()
 
     run(scenario())
+
+
+def test_sleeping_model_leaves_messages_for_later(store):
+    class Asleep:
+        async def chat(self, messages, **kwargs):
+            raise LLMUnavailable("Rechner aus")
+
+    async def scenario():
+        agent = MemoryAgent(store, Asleep(), min_new_messages=1)
+        talk(store)
+        agent.notify(5, G)
+        await asyncio.sleep(0.2)
+        agent.close()
+
+    run(scenario())     # darf nicht abstürzen
+    assert store.count_unprocessed(5) == 3 and store.list_memories(G) == []

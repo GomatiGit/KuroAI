@@ -25,6 +25,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Protocol
 
+from ..llm import LLMUnavailable
 from ..speech import SpeechSegment, SpeechStream
 from .audio import StreamResampler, discord_to_mono16k
 from .vad import END, START, UtteranceDetector
@@ -233,6 +234,8 @@ class VoiceSession:
             except asyncio.CancelledError:
                 if self.closed:
                     raise
+            except LLMUnavailable:
+                log.warning("Sprachantwort entfällt: Sprachmodell nicht erreichbar")
             except Exception:
                 log.exception("Sprachantwort fehlgeschlagen")
             finally:
