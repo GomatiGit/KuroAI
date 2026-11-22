@@ -147,3 +147,29 @@ def test_sleeping_model_leaves_messages_for_later(store):
 
     run(scenario())     # darf nicht abstürzen
     assert store.count_unprocessed(5) == 3 and store.list_memories(G) == []
+
+
+def test_explicit_remember_request_is_evaluated_at_once(store):
+    from kuro.memory_agent import SYSTEM_PROMPT, is_remember_request
+
+    for text in ("Merk dir: ich mag Met", "kuro, merke dir das bitte", "Vergiss nicht, dass ich Sonntag Geburtstag habe",
+                 "denk dran, morgen ist Grillen", "Behalte das für dich"):
+        assert is_remember_request(text), text
+    for text in ("Ich merke gerade, dass ich müde bin", "Hallo Kuro", "Vergissmeinnicht ist eine Blume"):
+        assert not is_remember_request(text), text
+    assert "IMMER" in SYSTEM_PROMPT
+
+    async def scenario():
+        llm = FakeLLM('{"ops": []}')
+        agent = MemoryAgent(store, llm, min_new_messages=6, idle_seconds=60)
+        store.add_message(5, "user", "Merk dir: ich trinke am liebsten Met.", guild_id=G,
+                          author_id=MARBUS, author_name="Marbus")
+        agent.notify(5, G, urgent=True)
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            if llm.calls:
+                break
+        assert len(llm.calls) == 1, "nicht 60 Sekunden gewartet"
+        agent.close()
+
+    run(scenario())

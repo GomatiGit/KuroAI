@@ -39,7 +39,9 @@ laufende Szenen, „bin gleich zurück“. Gib mit "ttl_hours" an, wie lange es 
 3. Gar nicht merken – Smalltalk, Begrüßungen, Wissensfragen und deren Antworten, alles bereits Gespeicherte.
 
 Regeln:
-- Lieber wenig und treffend als viel. Höchstens 6 Einträge, oft 0.
+- Bittet jemand ausdrücklich darum, sich etwas zu merken („merk dir …“, „vergiss nicht …“), speicherst \
+du das IMMER, als Langzeit-Erinnerung mit "importance": 5 – außer es fällt unter die Verbote unten.
+- Sonst: lieber wenig und treffend als viel. Höchstens 6 Einträge, oft 0.
 - Jede Erinnerung ist ein kurzer, eigenständiger deutscher Satz in der dritten Person, mit Namen statt „er/sie“.
 - "about" ist die Sprecherkennung der Person, um die es geht (z. B. "U1"), oder "server" für Allgemeines.
 - "importance" von 1 (nett zu wissen) bis 5 (zentral, z. B. ausdrücklich „merk dir das“).
@@ -63,6 +65,17 @@ Erlaubte "kind"-Werte: fact, preference, relationship, event, running_gag, promi
 Wenn nichts merkenswert ist: {"ops": []}"""
 
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
+
+# Ausdrückliche Bitte, sich etwas zu merken -> sofort auswerten statt abzuwarten.
+REMEMBER_REQUEST = re.compile(
+    r"\b(merk(e)?\s+(dir|euch)|nicht\s+vergessen|vergiss\s+(das\s+)?nicht|"
+    r"denk\s+(dran|daran)|behalt(e)?\s+(das|dir))\b",
+    re.IGNORECASE,
+)
+
+
+def is_remember_request(text: str) -> bool:
+    return bool(REMEMBER_REQUEST.search(text or ""))
 
 
 def parse_ops(raw: str) -> list[dict[str, Any]]:
@@ -155,8 +168,12 @@ class MemoryAgent:
 
     # -- Auslöser -------------------------------------------------------
 
-    def notify(self, channel_id: int, guild_id: int) -> None:
-        """Nach jeder gespeicherten Nachricht aufrufen."""
+    def notify(self, channel_id: int, guild_id: int, *, urgent: bool = False) -> None:
+        """Nach jeder gespeicherten Nachricht aufrufen.
+
+        ``urgent`` (z. B. bei „merk dir …“) wertet sofort aus, statt auf weitere
+        Nachrichten oder eine Gesprächspause zu warten.
+        """
         if channel_id in self._running:
             # Laufende Auswertung nicht abbrechen; danach noch einmal prüfen.
             self._dirty.add(channel_id)
@@ -165,13 +182,13 @@ class MemoryAgent:
         if old is not None:
             old.cancel()
         self._timers[channel_id] = asyncio.get_running_loop().create_task(
-            self._wait_and_run(channel_id, guild_id)
+            self._wait_and_run(channel_id, guild_id, urgent)
         )
 
-    async def _wait_and_run(self, channel_id: int, guild_id: int) -> None:
+    async def _wait_and_run(self, channel_id: int, guild_id: int, urgent: bool = False) -> None:
         try:
             pending = await asyncio.to_thread(self.store.count_unprocessed, channel_id)
-            if pending < self.min_new_messages:
+            if pending < self.min_new_messages and not urgent:
                 await asyncio.sleep(self.idle_seconds)
             while self.is_busy():  # Sprachantwort hat Vorrang vor dem Aufräumen
                 await asyncio.sleep(self.busy_poll_seconds)

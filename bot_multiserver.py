@@ -19,7 +19,7 @@ from kuro import prompts as kuro_prompts
 from kuro.images import ImageError, to_data_url
 from kuro.llm import LLMClient, LLMError, LLMUnavailable, chat_tool
 from kuro.memory import MemoryStore
-from kuro.memory_agent import MemoryAgent
+from kuro.memory_agent import MemoryAgent, is_remember_request
 from kuro.settings import resolve_llm, section
 
 DATA_DIR = Path(os.getenv("KURO_DATA_DIR", "."))
@@ -847,7 +847,7 @@ async def remember_exchange(
         log.warning("Konversationsverlauf konnte nicht gespeichert werden: %s", e)
         return
     if memory_agent is not None:
-        memory_agent.notify(channel_id, guild_id)
+        memory_agent.notify(channel_id, guild_id, urgent=is_remember_request(user_text))
 
 
 POLL_TOOL = chat_tool(
