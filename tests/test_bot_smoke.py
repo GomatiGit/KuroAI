@@ -120,6 +120,7 @@ def test_reply_flow_builds_prompt_calls_llm_and_remembers(tmp_path, monkeypatch)
         return first
 
     assert "Grill" in run(scenario())
+    assert "\n\n" not in bot.add_paragraphs("kurz *grinst*"), "kurze Antworten bleiben unverändert"
     messages, tools = seen[0]
     assert messages[0]["role"] == "system" and "Kuro" in messages[0]["content"]
     assert "VERIFIZIERTE ANGABEN" in messages[0]["content"]

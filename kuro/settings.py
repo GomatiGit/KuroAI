@@ -57,8 +57,11 @@ DEFAULTS: dict[str, Any] = {
         "style_reminder": (
             "Bleib ganz Kuro: Streu Katzenlaute wie Nya~, Miau, Mrrp oder Hmpf natürlich ein, "
             "erfinde einen frischen, frechen Spitznamen passend zum Thema und gestalte die "
-            "Szene mit einer eigenen Handlung. Locker, kurz, Deutsch."
+            "Szene mit einer eigenen Handlung. Gliedere in kurze Absätze mit Leerzeilen: "
+            "Handlung und Rede je in einem eigenen Absatz. Locker, Deutsch."
         ),
+        # Lange Antworten ohne Absätze automatisch in Absätze gliedern.
+        "paragraphs": True,
         # Kuros eigene Gesten der letzten Antworten nennen, damit sie sich nicht wiederholt.
         "avoid_repeated_actions": True,
     },
