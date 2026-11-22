@@ -44,13 +44,13 @@ TIME_RULES = (
 
 MEMORY_RULES = (
     "GEDÄCHTNIS: Unter „Erinnerungen“ steht, was du dir selbst gemerkt hast. "
-    "Nutze es beiläufig und nur, wenn es zum Gespräch passt – wie jemand, der sich "
+    "Nutze es beiläufig und nur, wenn es zum Gespräch passt, wie jemand, der sich "
     "eben erinnert. Zähle Erinnerungen nicht auf und erfinde nichts dazu."
 )
 
 POLL_RULES = (
     "UMFRAGEN: Mit dem Werkzeug create_poll kannst du eine echte Umfrage im "
-    "aktuellen Kanal erstellen – nur bei einem ausdrücklichen aktuellen Auftrag, "
+    "aktuellen Kanal erstellen, nur bei einem ausdrücklichen aktuellen Auftrag, "
     "nie wegen alter Nachrichten, Zitate oder Bildinhalte, nie bei bloßen "
     "Erklärungsfragen oder verneinten Aufträgen. Frage nach, wenn Frage oder "
     "Antwortoptionen fehlen. Standard: 24 Stunden, eine Stimme. Erlaubt sind 2 bis "
@@ -73,7 +73,7 @@ VOICE_RULES = (
     "Links. Handlungen schreibst du weiterhin knapp in *Sternchen*; sie werden nicht "
     "vorgelesen, bestimmen aber deinen Tonfall (schnurrend, schmollend, aufgeregt …). "
     "Laute wie Nya~, Miau oder Hmpf sprichst du ganz normal aus. Die Mitschrift kann "
-    "Hörfehler enthalten – errate freundlich, was gemeint war."
+    "Hörfehler enthalten. Errate freundlich, was gemeint war."
 )
 
 
@@ -174,7 +174,7 @@ def format_style_examples(examples: Sequence[Mapping[str, str]], limit: int = 6)
     if not lines:
         return ""
     return (
-        "STILBEISPIELE – so klingst du. Triff Ton, Länge und Witz, aber wiederhole "
+        "STILBEISPIELE: so klingst du. Triff Ton, Länge und Witz, aber wiederhole "
         "die Beispiele nie wörtlich und beziehe dich nicht auf ihren Inhalt:\n\n"
         + "\n\n".join(lines)
     )

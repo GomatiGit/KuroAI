@@ -1,4 +1,4 @@
-from kuro.formatting import add_paragraphs
+from kuro.formatting import remove_dashes, add_paragraphs
 
 LONG = ("*Ohren spitzen sich, Schwanz wedelt neugierig* Na sieh mal einer an, der Meister ist zurück! "
         "Ich hab schon gedacht, du hast dich im Keller zwischen den Fässern verlaufen, du Tavernen-Trottel. "
@@ -58,3 +58,15 @@ def test_actions_from_previous_replies_are_dropped_too():
     out = drop_repeated_actions(reply, previous=["Ohren spitze sich auf und schnurre", "Strecke mich und reibe mich an dir"])
     assert "Ohren" not in out and "reibe" not in out
     assert "*holt eine Pfanne vom Haken*" in out and out.startswith("Na klar, mein Koch!")
+
+
+def test_remove_dashes_replaces_ai_dashes_but_keeps_ranges():
+    assert remove_dashes("Na gut – ich helfe dir.") == "Na gut, ich helfe dir."
+    assert remove_dashes("Hmpf — *dreht sich weg*") == "Hmpf, *dreht sich weg*"
+    assert remove_dashes("Wort—Wort") == "Wort, Wort"
+    assert remove_dashes("*schnurrt*—leise") == "*schnurrt* leise"
+    assert remove_dashes("Das war's —") == "Das war's"
+    assert remove_dashes("Ja — . Gut") == "Ja. Gut"
+    assert remove_dashes("Seite 2–10 lesen") == "Seite 2–10 lesen"
+    assert remove_dashes("– Punkt eins\n– Punkt zwei") == "- Punkt eins\n- Punkt zwei"
+    assert remove_dashes("Ganz normal-Bindestrich bleibt.") == "Ganz normal-Bindestrich bleibt."

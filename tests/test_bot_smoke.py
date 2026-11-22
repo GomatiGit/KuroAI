@@ -180,11 +180,23 @@ class FakeCtx:
     def __init__(self, guild, author, channel):
         self.guild, self.author, self.channel = guild, author, channel
         self.sent = []
-        self.message = SimpleNamespace(add_reaction=self._react)
+        self.dms = []
+        self.deleted = False
+        self.message = SimpleNamespace(add_reaction=self._react, delete=self._delete)
         self.reactions = []
+        if not hasattr(author, "send"):
+            author.send = self._dm
+        if not hasattr(author, "mention"):
+            author.mention = f"<@{author.id}>"
 
     async def send(self, text, **kwargs):
         self.sent.append(text)
+
+    async def _dm(self, text, **kwargs):
+        self.dms.append(text)
+
+    async def _delete(self):
+        self.deleted = True
 
     async def _react(self, emoji):
         self.reactions.append(emoji)
@@ -206,10 +218,15 @@ def test_memory_commands_show_and_forget_only_own_entries(tmp_path, monkeypatch)
         await bot.erinnerungen.callback(ctx)
         await bot.reset.callback(ctx)
 
+    marbus.guild_permissions = SimpleNamespace(administrator=True)   # reset braucht Admin
     run(scenario())
-    assert "Met statt Bier" in ctx.sent[0] and "Hotelpool" in ctx.sent[0] and "Spurd0" not in ctx.sent[0]
+    # Erinnerungen kommen privat per DM, im Kanal steht nur ein Hinweis ohne Inhalt.
+    assert "Met statt Bier" in ctx.dms[0] and "Hotelpool" in ctx.dms[0] and "Spurd0" not in ctx.dms[0]
+    assert "nichts gemerkt" in ctx.dms[1]
+    assert ctx.deleted, "Befehl im Kanal wird gelöscht"
+    assert all("Met" not in text and "Hotelpool" not in text for text in ctx.sent)
+    assert "per DM" in ctx.sent[0]
     assert "2 Erinnerung(en)" in ctx.sent[1] and "1 gespeicherte Nachricht(en)" in ctx.sent[1]
-    assert "nichts gemerkt" in ctx.sent[2]
     assert [m.subject_id for m in bot.memory.list_memories(GUILD_ID)] == [9002]
     assert bot.memory.recent_messages(777) == [] and "Kontext für diesen Channel gelöscht" in ctx.sent[3]
     bot.memory.close()
@@ -524,9 +541,67 @@ def test_opt_out_is_available_to_everyone_and_stores_nothing(tmp_path, monkeypat
     assert [r["content"] for r in bot.memory.recent_messages(778)] == ["anderer Server"], \
         "vergissmich gilt nur für diesen Server"
     assert "Ab jetzt speichere ich auf keinem Server" in ctx.sent[0]
-    assert "🔒" in ctx.sent[1]
+    assert "🔒" in ctx.dms[0]
     assert "2 gespeicherte Nachricht(en)" in ctx.sent[2]
 
     run(bot.hoermich.callback(ctx))
     assert bot.memory.is_opted_out(9001) is False
+    bot.memory.close()
+
+
+def test_admin_commands_only_for_owner_admins_and_bot_owner(tmp_path, monkeypatch):
+    bot = load_bot(tmp_path, monkeypatch, name="bot_staff")
+    guild = SimpleNamespace(id=GUILD_ID, name="Taverne", owner_id=5000)
+    no_admin = SimpleNamespace(administrator=False)
+    member = fake_user(9001, "Marbus"); member.guild_permissions = no_admin
+    server_owner = fake_user(5000, "Chefin"); server_owner.guild_permissions = no_admin
+    admin = fake_user(9003, "Admin"); admin.guild_permissions = SimpleNamespace(administrator=True)
+    bot_owner = fake_user(OWNER_ID, "Gomati"); bot_owner.guild_permissions = no_admin
+
+    assert not bot.is_staff(guild, member)
+    assert all(bot.is_staff(guild, user) for user in (server_owner, admin, bot_owner))
+
+    async def allowed(name, user):
+        ctx = FakeCtx(guild, user, fake_channel())
+        ctx.command = bot.bot.get_command(name)
+        try:
+            for check in ctx.command.checks:
+                result = check(ctx)
+                if hasattr(result, "__await__"):
+                    result = await result
+                if not result:
+                    return False
+        except bot.commands.CheckFailure:
+            return False
+        return True
+
+    for name in ("modus", "setmodus", "reset", "keywords", "say"):
+        assert not run(allowed(name, member)), f"{name} für normale Mitglieder gesperrt"
+        for user in (server_owner, admin, bot_owner):
+            assert run(allowed(name, user)), f"{name} für {user.display_name} erlaubt"
+
+    for user, expected in ((member, False), (server_owner, True), (admin, True), (bot_owner, True)):
+        assert bot.may_use_voice_join(SimpleNamespace(guild=guild, author=user)) is expected
+
+
+def test_slash_erinnerungen_answers_only_ephemeral(tmp_path, monkeypatch):
+    bot = load_bot(tmp_path, monkeypatch, name="bot_slashmem")
+    guild = SimpleNamespace(id=GUILD_ID, name="Taverne")
+    bot.memory.add_memory(GUILD_ID, "Marbus trinkt Met.", subject_id=9001, subject_name="Marbus")
+    sent = []
+
+    async def defer(**kwargs):
+        assert kwargs.get("ephemeral") is True
+
+    async def followup(text, **kwargs):
+        sent.append((text, kwargs.get("ephemeral")))
+
+    interaction = SimpleNamespace(
+        guild=guild, user=fake_user(9001, "Marbus"),
+        response=SimpleNamespace(defer=defer),
+        followup=SimpleNamespace(send=followup),
+    )
+    run(bot.erinnerungen_slash.callback(interaction))
+    assert sent and all(ephemeral is True for _, ephemeral in sent)
+    assert "Met" in sent[0][0]
     bot.memory.close()

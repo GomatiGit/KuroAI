@@ -16,7 +16,7 @@ import discord
 from discord.ext import commands
 
 from kuro import prompts as kuro_prompts
-from kuro.formatting import add_paragraphs, drop_repeated_actions
+from kuro.formatting import add_paragraphs, drop_repeated_actions, remove_dashes
 from kuro.images import ImageError, to_data_url
 from kuro.llm import LLMClient, LLMError, LLMUnavailable, chat_tool
 from kuro.memory import MemoryStore
@@ -65,6 +65,29 @@ except ValueError:
     
 def is_owner(user: discord.abc.User) -> bool:
     return OWNER_USER_ID != 0 and user.id == OWNER_USER_ID
+
+
+def is_staff(guild, member) -> bool:
+    """Serverowner, Administratoren und der Bot-Owner."""
+    if is_owner(member):
+        return True
+    if guild is None:
+        return False
+    if getattr(guild, "owner_id", None) == member.id:
+        return True
+    permissions = getattr(member, "guild_permissions", None)
+    return bool(permissions and permissions.administrator)
+
+
+NO_PERMISSION_TEXT = "Dafür fehlt dir die Berechtigung. Das dürfen nur Serverowner und Admins."
+
+
+def staff_only():
+    async def predicate(ctx):
+        if is_staff(ctx.guild, ctx.author):
+            return True
+        raise commands.CheckFailure(NO_PERMISSION_TEXT)
+    return commands.check(predicate)
 
 if not DISCORD_TOKEN:
     raise RuntimeError("Discord Token fehlt.")
@@ -1137,6 +1160,8 @@ async def generate_reply(
         # Auch Gesten aus Kuros letzten Antworten zählen als schon benutzt.
         recent = await asyncio.to_thread(memory.recent_messages, channel.id, 8)
         text = drop_repeated_actions(text, previous=kuro_prompts.recent_actions(recent))
+    if LLM_CONFIG.get("avoid_dashes", True):
+        text = remove_dashes(text)
     if LLM_CONFIG.get("paragraphs", True):
         text = add_paragraphs(text)
     return text
@@ -1514,21 +1539,24 @@ async def hilfe(ctx):
         f"**Befehle**\n"
         f"`{prefix}ping`\n"
         f"`{prefix}hilfe` zeigt das hier an\n"
-        f"`{prefix}modus`\n"
+        f"`{prefix}modus` (Admin)\n"
         f"`{prefix}setmodus <modus|auto>` (Admin)\n"
         f"`{prefix}reset` (Admin)\n" 
         f"`{prefix}keywords` (Admin)\n"
-        f"`{prefix}erinnerungen` zeigt, was ich über dich gespeichert habe\n"
+        f"`{prefix}erinnerungen` schickt dir per DM, was ich über dich gespeichert habe "
+        f"(`/erinnerungen` zeigt es nur dir im Kanal)\n"
         f"`{prefix}vergissmich` löscht deine Erinnerungen und Nachrichten auf diesem Server\n"
-        f"`{prefix}komm` / `{prefix}geh` Sprachkanal betreten/verlassen\n"
+        f"`{prefix}komm` / `{prefix}geh` Sprachkanal betreten/verlassen (Admin)\n"
         f"`{prefix}stopp` unterbricht mich beim Sprechen\n"
         f"`{prefix}ignoriermich` / `{prefix}hörmich` nichts mehr von dir speichern / wieder speichern\n"
-        f"`/ask` per Slash-Command"
+        f"`/ask` per Slash-Command\n"
+        f"-# Admin = Serverowner, Administratoren und der Bot-Owner"
     )
 
 
 @bot.command(name="modus")
 @commands.guild_only()
+@staff_only()
 async def modus(ctx):
     if not is_allowed_guild(ctx.guild):
         return
@@ -1547,7 +1575,7 @@ async def modus(ctx):
 
 @bot.command(name="setmodus")
 @commands.guild_only()
-@commands.has_guild_permissions(administrator=True)
+@staff_only()
 async def setmodus(ctx, mode: str):
     if not is_allowed_guild(ctx.guild):
         return
@@ -1608,7 +1636,8 @@ async def setmodus(ctx, mode: str):
 
 
 @bot.command(name="reset")
-@commands.has_permissions(administrator=True)
+@commands.guild_only()
+@staff_only()
 async def reset(ctx):
     await asyncio.to_thread(memory.clear_channel, ctx.channel.id)
     await ctx.send(
@@ -1618,7 +1647,8 @@ async def reset(ctx):
 
 
 @bot.command(name="keywords")
-@commands.has_permissions(administrator=True)
+@commands.guild_only()
+@staff_only()
 async def keywords(ctx):
     rules = config.get("keyword_rules", [])
     if not rules:
@@ -1641,7 +1671,8 @@ async def keywords(ctx):
 
 
 @bot.command(name="say")
-@commands.has_permissions(administrator=True)
+@commands.guild_only()
+@staff_only()
 async def say(ctx, *, text: str):
     try:
         await ctx.message.delete()
@@ -1717,16 +1748,16 @@ async def ask(interaction: discord.Interaction, frage: str):
 
 @say.error
 async def say_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("Dafür brauchst du Administrator-Rechte.")
+    if isinstance(error, (commands.CheckFailure, commands.MissingPermissions)):
+        await ctx.send(NO_PERMISSION_TEXT)
     else:
         await ctx.send(f"Fehler: {error}")
 
 
 @setmodus.error
 async def setmodus_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("Dafür brauchst du Administrator-Rechte.")
+    if isinstance(error, (commands.CheckFailure, commands.MissingPermissions)):
+        await ctx.send(NO_PERMISSION_TEXT)
     elif isinstance(error, commands.MissingRequiredArgument):
         await ctx.send("Nutze `!setmodus <modus>` oder `!setmodus auto`.")
     else:
@@ -1734,8 +1765,8 @@ async def setmodus_error(ctx, error):
 
 @reset.error
 async def reset_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("Dafür brauchst du Administrator-Rechte.")
+    if isinstance(error, (commands.CheckFailure, commands.MissingPermissions)):
+        await ctx.send(NO_PERMISSION_TEXT)
     else:
         log.exception(
             "Fehler beim Befehl reset",
@@ -1746,8 +1777,8 @@ async def reset_error(ctx, error):
 
 @keywords.error
 async def keywords_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("Dafür brauchst du Administrator-Rechte.")
+    if isinstance(error, (commands.CheckFailure, commands.MissingPermissions)):
+        await ctx.send(NO_PERMISSION_TEXT)
     else:
         log.exception(
             "Fehler beim Befehl keywords",
@@ -1761,17 +1792,34 @@ async def keywords_error(ctx, error):
 @bot.command(name="erinnerungen", aliases=["gedächtnis", "gedaechtnis", "meinedaten"])
 @commands.guild_only()
 async def erinnerungen(ctx):
-    """Zeigt jedem, was Kuro über ihn gespeichert hat."""
+    """Zeigt jedem privat (per DM), was Kuro über ihn gespeichert hat."""
     if not is_allowed_guild(ctx.guild):
         return
+    report = await build_memory_report(ctx.guild, ctx.author)
+    await send_private(ctx, report)
 
+
+@bot.tree.command(name="erinnerungen", description="Zeigt nur dir, was Kuro über dich gespeichert hat.")
+async def erinnerungen_slash(interaction: discord.Interaction):
+    if interaction.guild is None or not is_allowed_guild(interaction.guild):
+        await interaction.response.send_message("Das geht nur auf einem Server.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    report = await build_memory_report(interaction.guild, interaction.user)
+    for chunk in split_message(report):
+        await interaction.followup.send(
+            chunk, ephemeral=True, allowed_mentions=discord.AllowedMentions.none()
+        )
+
+
+async def build_memory_report(guild, user) -> str:
     prefix = config.get("prefix", "!")
-    opted_out = await asyncio.to_thread(memory.is_opted_out, ctx.author.id)
+    opted_out = await asyncio.to_thread(memory.is_opted_out, user.id)
     items = await asyncio.to_thread(
-        memory.list_memories, ctx.guild.id, subject_ids=[ctx.author.id], limit=25
+        memory.list_memories, guild.id, subject_ids=[user.id], limit=25
     )
 
-    lines = []
+    lines = [f"-# Server: {guild.name}"]
     if opted_out:
         lines.append(
             f"🔒 Du hast `{prefix}ignoriermich` gewählt: Ich speichere nichts Neues von dir."
@@ -1786,9 +1834,37 @@ async def erinnerungen(ctx):
         lines.append(
             f"-# 📌 dauerhaft · 🕒 nur vorübergehend · `{prefix}vergissmich` löscht alles"
         )
+    return "\n".join(lines)
 
-    for chunk in split_message("\n".join(lines)):
-        await ctx.send(chunk, allowed_mentions=discord.AllowedMentions.none())
+
+async def send_private(ctx, text: str) -> None:
+    """Schickt dem Autor eine Nachricht, die andere nicht mitlesen können.
+
+    Per DM; der Befehl im Kanal wird gelöscht (wenn Kuro darf) und nur ein
+    kurzer Hinweis ohne Inhalt bleibt ein paar Sekunden stehen.
+    """
+    none = discord.AllowedMentions.none()
+    try:
+        for chunk in split_message(text):
+            await ctx.author.send(chunk, allowed_mentions=none)
+    except (discord.Forbidden, discord.HTTPException):
+        await ctx.send(
+            f"{ctx.author.mention} ich kann dir keine DM schicken. Erlaube in den "
+            "Servereinstellungen Direktnachrichten von Mitgliedern und versuch es nochmal.",
+            delete_after=20,
+            allowed_mentions=discord.AllowedMentions(users=[ctx.author]),
+        )
+        return
+    finally:
+        try:
+            await ctx.message.delete()
+        except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+            pass
+    await ctx.send(
+        f"{ctx.author.mention} hab dir deine Erinnerungen per DM geschickt. 📬",
+        delete_after=10,
+        allowed_mentions=discord.AllowedMentions(users=[ctx.author]),
+    )
 
 
 def guild_channel_ids(guild: discord.Guild) -> list[int]:
@@ -1939,15 +2015,9 @@ setup_voice()
 
 
 def may_use_voice_join(ctx) -> bool:
-    permission = VOICE_CONFIG.get("join_permission", "admin")
-
-    if is_owner(ctx.author):
+    if VOICE_CONFIG.get("join_permission", "admin") == "everyone":
         return True
-    if permission == "everyone":
-        return True
-    if permission == "admin":
-        return ctx.author.guild_permissions.administrator
-    return False
+    return is_staff(ctx.guild, ctx.author)
 
 
 @bot.command(name="komm", aliases=["join"])
@@ -1961,7 +2031,7 @@ async def komm(ctx):
         return
 
     if not may_use_voice_join(ctx):
-        await ctx.send("Dafür fehlt dir die Berechtigung.")
+        await ctx.send(NO_PERMISSION_TEXT)
         return
 
     if not llm.available:
@@ -2004,7 +2074,7 @@ async def geh(ctx):
         return
 
     if not may_use_voice_join(ctx):
-        await ctx.send("Dafür fehlt dir die Berechtigung.")
+        await ctx.send(NO_PERMISSION_TEXT)
         return
 
     if await voice_manager.leave(ctx.guild.id):
@@ -2022,6 +2092,21 @@ async def stopp(ctx):
     session = voice_manager.get(ctx.guild.id)
     if session is not None and session.interrupt("command"):
         await ctx.message.add_reaction("🤐")
+
+
+@bot.event
+async def on_command_error(ctx, error):
+    if ctx.command is not None and ctx.command.has_error_handler():
+        return
+    if isinstance(error, commands.CommandNotFound):
+        return
+    if isinstance(error, commands.NoPrivateMessage):
+        await ctx.send("Das geht nur auf einem Server.")
+        return
+    if isinstance(error, commands.CheckFailure):
+        await ctx.send(NO_PERMISSION_TEXT)
+        return
+    log.error("Fehler im Befehl %s: %s", ctx.command, error)
 
 
 @bot.event

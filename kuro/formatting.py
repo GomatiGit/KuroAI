@@ -119,3 +119,32 @@ def add_paragraphs(text: str, min_length: int = 220, max_paragraph: int = 260) -
         else:
             merged.append(part)
     return "\n\n".join(merged)
+
+
+_SPACED_DASH = re.compile(r"[ \t]+[–—][ \t]+|[ \t]+--[ \t]+")
+_TIGHT_EM_DASH = re.compile(r"(?<=[^\W\d])—(?=[^\W\d])")
+_TIGHT_EN_DASH = re.compile(r"(?<=[^\W\d])–(?=[^\W\d])")
+_OTHER_DASH = re.compile(r"(?<!\d)[–—](?!\d)")
+_LINE_START_DASH = re.compile(r"(?m)^([ \t]*)[–—][ \t]+")
+_TRAILING_DASH = re.compile(r"[ \t]*[–—][ \t]*(?=$|\n|\*)")
+_DOUBLE_PUNCT = re.compile(r",\s*([,.!?…~])")
+
+
+def remove_dashes(text: str) -> str:
+    """Gedankenstriche (– und —) durch Kommas ersetzen.
+
+    Lokale Modelle streuen gern den typischen KI-Gedankenstrich ein. Zahlen-
+    bereiche wie ``2–10`` bleiben, Listenpunkte am Zeilenanfang werden zu ``-``.
+    """
+    if "–" not in text and "—" not in text and " -- " not in text:
+        return text
+    text = _LINE_START_DASH.sub(r"\1- ", text)
+    text = _SPACED_DASH.sub(", ", text)
+    text = _TIGHT_EM_DASH.sub(", ", text)
+    text = _TIGHT_EN_DASH.sub("-", text)
+    text = _TRAILING_DASH.sub("", text)
+    text = _OTHER_DASH.sub(" ", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"[ \t]+([“.,!?…])", r"\1", text)
+    text = _DOUBLE_PUNCT.sub(r"\1", text)
+    return text
