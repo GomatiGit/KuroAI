@@ -47,3 +47,14 @@ def test_repeated_actions_in_one_reply_are_dropped():
     assert "Erzähl mir mehr! Bin schon ganz gespannt" in out
     assert drop_repeated_actions("*grinst* Hallo. *grinst breit und kichert* Na?") == \
         "*grinst* Hallo. *grinst breit und kichert* Na?", "neue Details bleiben erhalten"
+
+
+def test_actions_from_previous_replies_are_dropped_too():
+    from kuro.formatting import drop_repeated_actions
+
+    reply = ("*Ohren spitze sich auf und mein Schwanz zucke vor Aufregung* Na klar, mein Koch! "
+             "*Strecke mich und reibe mich an dir* Was steht heute auf dem Speiseplan? "
+             "*holt eine Pfanne vom Haken* Soll ich dir etwas zaubern?")
+    out = drop_repeated_actions(reply, previous=["Ohren spitze sich auf und schnurre", "Strecke mich und reibe mich an dir"])
+    assert "Ohren" not in out and "reibe" not in out
+    assert "*holt eine Pfanne vom Haken*" in out and out.startswith("Na klar, mein Koch!")

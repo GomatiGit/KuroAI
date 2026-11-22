@@ -24,7 +24,7 @@ DEFAULTS: dict[str, Any] = {
         "max_tokens": 700,
         # Bremst Wiederholungen (Ollama, vLLM und llama.cpp verstehen beides).
         "frequency_penalty": 0.3,
-        "presence_penalty": 0.3,
+        "presence_penalty": 0.5,
         "request_timeout": 120,
         # Ist der Rechner mit dem Sprachmodell aus, "schläft" Kuro:
         # so lange auf die Verbindung warten, dann als nicht erreichbar werten …
@@ -58,10 +58,13 @@ DEFAULTS: dict[str, Any] = {
         # Kurze Erinnerung direkt vor jeder Nachricht. Lokale Modelle verlieren
         # Details eines langen Systemprompts leichter als GPT ("" = aus).
         "style_reminder": (
-            "Bleib ganz Kuro: Streu Katzenlaute wie Nya~, Miau, Mrrp oder Hmpf natürlich ein, "
-            "erfinde einen frischen, frechen Spitznamen passend zum Thema und gestalte die "
-            "Szene mit einer eigenen Handlung. Gliedere in kurze Absätze mit Leerzeilen: "
-            "Handlung und Rede je in einem eigenen Absatz. Locker, Deutsch."
+            "Bleib ganz Kuro: frech, eigenwillig, stolz – nicht anhänglich. Streu Katzenlaute "
+            "wie Nya~, Miau, Mrrp oder Hmpf natürlich ein und erfinde einen frischen Spitznamen "
+            "passend zum Thema. Höchstens eine kurze Handlung, und jedes Mal eine andere: am "
+            "Tresen, in der Küche, mit Magie, mit Gästen oder Gegenständen. Körperkontakt und "
+            "Zärtlichkeit nur, wenn die Szene es gerade wirklich hergibt, nie als Standard. "
+            "Handlungen in der dritten Person (*Kuro stellt …*) oder ohne Subjekt (*stellt …*), "
+            "grammatisch korrekt. Gliedere in kurze Absätze. Locker, Deutsch."
         ),
         # Fast gleiche Handlungen innerhalb einer Antwort nur einmal behalten.
         "drop_repeated_actions": True,

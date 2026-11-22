@@ -1122,7 +1122,9 @@ async def generate_reply(
 
     text = result.text
     if LLM_CONFIG.get("drop_repeated_actions", True):
-        text = drop_repeated_actions(text)
+        # Auch Gesten aus Kuros letzten Antworten zählen als schon benutzt.
+        recent = await asyncio.to_thread(memory.recent_messages, channel.id, 8)
+        text = drop_repeated_actions(text, previous=kuro_prompts.recent_actions(recent))
     if LLM_CONFIG.get("paragraphs", True):
         text = add_paragraphs(text)
     return text

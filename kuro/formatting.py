@@ -33,27 +33,46 @@ def _split_long(part: str, max_chars: int) -> list[str]:
 
 
 _WORD = re.compile(r"[a-zäöüß]{3,}")
-_FILLER = frozenset("und sich mit dem den der die das ein eine einen auf aus ganz dir dich mir mich ihr".split())
+_FILLER = frozenset(
+    "und sich mit dem den der die das ein eine einen auf aus ganz dir dich mir mich ihr "
+    "mein meine meinen dein deine sein seine vor kuro".split()
+)
+
+
+def _ordered_words(action: str) -> list[str]:
+    return [w for w in _WORD.findall(action.lower()) if w not in _FILLER]
 
 
 def _action_words(action: str) -> set[str]:
-    return {w for w in _WORD.findall(action.lower()) if w not in _FILLER}
+    return set(_ordered_words(action))
 
 
-def drop_repeated_actions(text: str, threshold: float = 0.75) -> str:
-    """Entfernt Handlungen, die innerhalb derselben Antwort fast gleich schon vorkamen.
+def _opening(action: str) -> tuple[str, ...]:
+    """Die ersten zwei Inhaltswörter – *Ohren spitzen sich …* ist ein typischer Tick."""
+    words = _ordered_words(action)
+    return tuple(words[:2]) if len(words) >= 2 else ()
 
-    Lokale Modelle schreiben gern dreimal *Ohren spitzen sich auf*. Eine spätere
-    Handlung fliegt raus, wenn mindestens ``threshold`` ihrer Wörter schon in
-    einer früheren Handlung derselben Antwort standen.
+
+def drop_repeated_actions(
+    text: str, threshold: float = 0.75, previous: list[str] | tuple[str, ...] = ()
+) -> str:
+    """Entfernt Handlungen, die fast gleich schon vorkamen.
+
+    Lokale Modelle schreiben gern dreimal *Ohren spitzen sich auf* – in einer
+    Antwort und in jeder weiteren. Eine Handlung fliegt raus, wenn mindestens
+    ``threshold`` ihrer Wörter schon in einer früheren Handlung derselben
+    Antwort oder in ``previous`` (Kuros letzte Antworten) standen.
     """
-    seen: list[set[str]] = []
+    seen: list[set[str]] = [w for w in (_action_words(p) for p in previous) if w]
+    openings = {o for o in (_opening(p) for p in previous) if o}
     pieces: list[str] = []
     position = 0
     for match in _ACTION.finditer(text):
         words = _action_words(match.group(0))
-        repeated = bool(words) and any(
-            len(words & earlier) / len(words) >= threshold for earlier in seen
+        opening = _opening(match.group(0))
+        repeated = bool(words) and (
+            (bool(opening) and opening in openings)
+            or any(len(words & earlier) / len(words) >= threshold for earlier in seen)
         )
         if repeated:
             pieces.append(text[position:match.start()].rstrip(" \t"))
@@ -61,6 +80,8 @@ def drop_repeated_actions(text: str, threshold: float = 0.75) -> str:
             continue
         if words:
             seen.append(words)
+        if opening:
+            openings.add(opening)
     pieces.append(text[position:])
     result = "".join(pieces)
     result = re.sub(r"[ \t]{2,}", " ", result)

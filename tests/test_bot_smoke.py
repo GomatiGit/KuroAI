@@ -55,7 +55,7 @@ def test_bot_loads_with_local_llm_and_registers_commands(tmp_path, monkeypatch):
     assert bot.LLM_CONFIG["base_url"].startswith("http://") and bot.CONTEXT_MESSAGES == 30
     assert (tmp_path / "kuro.sqlite3").exists()
     assert bot.voice_manager is None, "Sprache ist in der Beispielconfig aus"
-    assert bot.llm.params["frequency_penalty"] == 0.3 and bot.llm.params["presence_penalty"] == 0.3
+    assert bot.llm.params["frequency_penalty"] == 0.3 and bot.llm.params["presence_penalty"] == 0.5
     bot.memory.close()
 
 
