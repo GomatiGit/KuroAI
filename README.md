@@ -14,6 +14,7 @@ Ein Discord-Rollenspiel-Bot mit lokalem Sprachmodell oder OpenAI, Gedächtnis, S
 
 ![Discord.py](https://img.shields.io/badge/Discord.py-2.x-5865F2?logo=discord)
 ![Docker](https://img.shields.io/badge/Docker-GHCR-2496ED?logo=docker)
+![Ollama](https://img.shields.io/badge/Ollama-lokal-000000?logo=ollama)
 ![OpenAI](https://img.shields.io/badge/OpenAI-API-10A37F)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -26,9 +27,14 @@ Ein Discord-Rollenspiel-Bot mit lokalem Sprachmodell oder OpenAI, Gedächtnis, S
 - 🐾 Mehrere Persönlichkeiten (Personas)
 - 🧠 Gedächtnis in SQLite: Chatkontext, Kurzzeit- und Langzeitgedächtnis – Kuro entscheidet selbst, was sie sich merkt
 - 🤖 Lokales Sprachmodell über jeden OpenAI-kompatiblen Endpunkt (Ollama, llama.cpp, vLLM …) oder wie bisher OpenAI
+- 😴 Schlafmodus: Ist der PC mit dem Sprachmodell aus, schläft Kuro und wacht von selbst wieder auf, sobald das Modell erreichbar ist
+- 🎨 Stil wie im Original: Stilbeispiele, keine wiederholten Gesten, Absätze, Katzenlaute und keine KI-Gedankenstriche
+- 🎬 Eigeninitiative im Rollenspiel: Kuro spielt Szenen aktiv weiter und bezieht ihre Gesprächspartner mit ein
 - 🎙️ (optional) Sprachkanal: Kuro hört zu, unterscheidet die Sprecher, antwortet mit eigener Stimme und lässt sich unterbrechen
 - 👯 Eindeutige Identifikation der Chatter über ihre Discord-User-ID
-- 🖼️ Analyse hochgeladener Bilder
+- 🖼️ Analyse hochgeladener Bilder (auch mit lokalen Vision-Modellen)
+- 📊 Discord-Umfragen per Prompt
+- 🔐 Datenschutz für alle: eigene Erinnerungen privat ansehen, löschen oder das Speichern ganz abschalten
 - 👋 Welcome- und Goodbye-Nachrichten
 - 🌍 Multi-Server-Unterstützung
 - 🔒 Server-Whitelist
@@ -36,7 +42,7 @@ Ein Discord-Rollenspiel-Bot mit lokalem Sprachmodell oder OpenAI, Gedächtnis, S
 - 🎭 Rollenspiel als Tabaxi-Zauberin aus dem DnD Universum
 - 🐳 Fertiges Docker-Image über GitHub Container Registry (GHCR)
 - 📝 Log-Channel für Fehler
-- 🛡️ Administrativer Persona-Wechsel / Chathistorie löschen / Befehl "/say" im Botkontext.
+- 🛡️ Administrativer Persona-Wechsel mit Auswahlliste / Chathistorie löschen / Befehl "!say" im Botkontext – nur für Serverowner, Administratoren und den Bot-Owner
 
 ---
 
@@ -72,7 +78,8 @@ Du brauchst:
 
 - Docker Engine mit Docker Compose v2 oder Docker Desktop
 - einen Discord Bot Token
-- einen OpenAI API Key mit eingerichtetem Billing
+- **entweder** einen lokalen LLM-Server, z. B. Ollama auf einem PC mit Grafikkarte (empfohlen: `gemma4:12b`, siehe [docs/LOKALER_BETRIEB.md](docs/LOKALER_BETRIEB.md))
+- **oder** einen OpenAI API Key mit eingerichtetem Billing
 - aktivierten Discord Developer Mode
 - deine Discord Server-ID
 - deine Discord User-ID
@@ -99,13 +106,17 @@ ghcr.io/gomatigit/kuroai:latest
    - Message Content Intent
    - Server Members Intent
 5. Kopiere den Bot Token und speichere ihn sicher.
-6. Erstelle unter **OAuth2** einen Einladungslink für den Bot und füge ihn deinem Discord-Server hinzu.
+6. Erstelle unter **OAuth2** einen Einladungslink für den Bot mit den Scopes `bot` und `applications.commands` und füge ihn deinem Discord-Server hinzu. Ohne `applications.commands` fehlen die Slash-Befehle `/ask`, `/erinnerungen` und `/setmodus`.  
+   Passende Berechtigungen (inklusive Sprachkanal und Umfragen) ergeben den Wert `563224834591808`.  
+   Damit Kuro den Befehl bei `!erinnerungen` aus dem Kanal entfernen kann, braucht sie **Nachrichten verwalten**.
 7. Aktiviere in Discord unter **Einstellungen → Erweitert** den **Entwicklermodus**.
 8. Kopiere anschließend deine Discord User-ID und die Server-ID.
 
 ---
 
-## 3. OpenAI API Key
+## 3. OpenAI API Key (nur ohne lokales Modell)
+
+Für den lokalen Betrieb wird kein API Key benötigt. Dann trägst du in der `config.json` den Bereich `llm` ein (siehe [docs/LOKALER_BETRIEB.md](docs/LOKALER_BETRIEB.md)) und überspringst diesen Schritt.
 
 Erstelle einen API Key im OpenAI Dashboard auf <https://platform.openai.com/> und speichere ihn sicher.
 
@@ -157,6 +168,8 @@ Dort befinden sich später beispielsweise:
 ```text
 data/
 ├── config.json
+├── kuro.sqlite3
+├── style_examples.json
 ├── conversation_history.json
 ├── known_members.json
 ├── ghetto_day.json
@@ -184,16 +197,24 @@ Trage dort mindestens deine eigenen Werte ein:
 
 ```env
 DISCORD_BOT_TOKEN=dein_discord_bot_token
-OPENAI_API_KEY=dein_openai_api_key
 KURO_OWNER_USER_ID=deine_discord_user_id
 ```
 
-Die folgenden Variablen sind für die geplante ElevenLabs-Sprachausgabe vorgesehen und im aktuellen Grundbetrieb nicht erforderlich:
+Nur für den OpenAI-Betrieb (kein `llm`-Bereich in der `config.json`):
 
 ```env
-ELEVENLABS_API_KEY=
-KURO_VOICE_ID=
+OPENAI_API_KEY=dein_openai_api_key
 ```
+
+Optional, falls eigene LLM-, Spracherkennungs- oder Stimmen-Endpunkte einen Schlüssel verlangen:
+
+```env
+KURO_LLM_API_KEY=
+KURO_STT_API_KEY=
+KURO_TTS_API_KEY=
+```
+
+Die Variablen `ELEVENLABS_API_KEY` und `KURO_VOICE_ID` stammen aus der früheren Planung und werden im lokalen Betrieb nicht benötigt.
 
 Die Datei `.env` ist in `.gitignore` ausgeschlossen und darf nicht veröffentlicht werden.
 
@@ -215,9 +236,10 @@ Wichtige Bereiche:
 - Unter `guilds` können serverindividuelle Einstellungen hinterlegt werden.
 - Unter `personas` werden die verschiedenen Persönlichkeiten definiert.
 - `keyword_rules` enthält Keyword-Reaktionen.
-- `llm` legt Endpunkt und Modell fest. Fehlt der Bereich, nutzt Kuro wie bisher OpenAI mit `model` und `reasoning_effort`.
+- `llm` legt Endpunkt und Modell fest. Fehlt der Bereich, nutzt Kuro wie bisher OpenAI mit `model` und `reasoning_effort`.  
+  Dort lassen sich auch Schlafmodus (`sleep_messages`, `sleep_status`), Aufwärmen (`warm_up`) und die Stil-Nachbearbeitung (`paragraphs`, `drop_repeated_actions`, `avoid_dashes`) einstellen.
 - `memory.context_messages` bestimmt, wie viele Nachrichten je Channel als Gesprächskontext mitgegeben werden (Standard 30). Das frühere `max_history_per_channel` wird nicht mehr ausgewertet.
-- `voice` schaltet die Sprachfunktion ein und konfiguriert Spracherkennung und Stimme.
+- `voice` schaltet die Sprachfunktion ein und konfiguriert Spracherkennung und Stimme. Mit `join_permission: "everyone"` dürfen alle `!komm` / `!geh` benutzen, Standard sind nur Serverowner, Admins und Bot-Owner.
 - Alle Einzelheiten dazu stehen in [docs/LOKALER_BETRIEB.md](docs/LOKALER_BETRIEB.md).
 - `bot_reply_limits` begrenzt, wie häufig Kuro mit anderen Bots kommunizieren darf, falls du noch andere Textbots hast, die auf Nachrichten reagieren.
 
@@ -283,8 +305,8 @@ GitHub / GHCR
 
 Docker-Umgebung
 ├── DISCORD_BOT_TOKEN
-├── OPENAI_API_KEY
-└── KURO_OWNER_USER_ID
+├── KURO_OWNER_USER_ID
+└── OPENAI_API_KEY            (nur im OpenAI-Betrieb)
 
 Persistentes data/
 ├── config.json
@@ -311,6 +333,8 @@ Das Image enthält **keine persönlichen API Keys, Tokens oder Server-Konfigurat
 | Frech | Sonntags etwas lockerer und sarkastischer. Sie hat da nämlich frei |
 | Ghetto Kuro | Ein zufälliger Tag pro Monat mit besonders schlechter Laune |
 
+Die Persona wird automatisch gewählt. Admins können sie pro Server mit `!setmodus <modus>` oder `/setmodus` (mit Auswahlliste) festlegen und mit `auto` wieder zur Automatik zurückkehren. `!setmodus` ohne Angabe und `!hilfe` zählen alle verfügbaren Modi auf. Neue Personas aus der `config.json` erscheinen dort automatisch; mit `"description"` bekommt eine Persona einen eigenen Kurztext.
+
 ---
 
 ## 🖼️ Bilderkennung
@@ -333,14 +357,30 @@ Erstelle echte Discord-Umfragen durch eine Nachricht an Kuro oder über `/ask` �
 
 Kuro kann vollständig auf eigener Hardware laufen. Die Einrichtung – Modellwahl, Speicherbedarf, Gedächtnis, Sprachkanal und der Modellvergleich mit `tools/persona_eval.py` – ist in **[docs/LOKALER_BETRIEB.md](docs/LOKALER_BETRIEB.md)** beschrieben.
 
+Ist das Sprachmodell nicht erreichbar, schläft Kuro: Sie zeigt das im Status an, antwortet höchstens mit einem kurzen Schlafhinweis und wacht von selbst wieder auf, sobald der PC läuft. Ein Rückfall auf ein langsames CPU-Modell findet bewusst nicht statt.
+
+**Befehle für alle**
+
 | Befehl | Wirkung |
 |--------|---------|
+| `!hilfe` | zeigt alle Befehle und die verfügbaren Modi |
+| `!ping` | prüft, ob der Bot online ist |
+| `/ask` | fragt Kuro per Slash-Befehl |
 | `!erinnerungen` | schickt dir per DM, was Kuro über dich gespeichert hat; `/erinnerungen` zeigt es nur dir im Kanal |
 | `!vergissmich` | löscht deine Erinnerungen und gespeicherten Nachrichten auf diesem Server |
-| `!komm` / `!geh` | Kuro betritt bzw. verlässt deinen Sprachkanal (nur Serverowner, Admins, Bot-Owner) |
-| `!modus`, `!setmodus`, `!reset`, `!keywords`, `!say` | nur Serverowner, Admins und Bot-Owner; `!setmodus` ohne Angabe listet die Modi, `/setmodus` schlägt sie in einer Auswahlliste vor |
-| `!stopp` | unterbricht Kuro beim Sprechen (im Sprachkanal reicht „Kuro, stopp“) |
 | `!ignoriermich` / `!hörmich` | Opt-out: Kuro speichert auf keinem Server mehr etwas von dir und hört dir im Sprachkanal nicht zu / wieder einschalten |
+| `!stopp` | unterbricht Kuro beim Sprechen (im Sprachkanal reicht „Kuro, stopp“) |
+
+**Befehle für Serverowner, Administratoren und den Bot-Owner**
+
+| Befehl | Wirkung |
+|--------|---------|
+| `!modus` | zeigt die aktive Persona und alle verfügbaren Modi |
+| `!setmodus <modus>` / `/setmodus` | legt die Persona für diesen Server fest; ohne Angabe listet `!setmodus` die Modi, `/setmodus` schlägt sie in einer Auswahlliste vor |
+| `!reset` | löscht den Gesprächskontext dieses Channels (Erinnerungen bleiben) |
+| `!keywords` | zeigt die aktiven Keyword-Regeln |
+| `!say <text>` | Kuro schreibt den Text, dein Befehl wird gelöscht |
+| `!komm` / `!geh` | Kuro betritt bzw. verlässt deinen Sprachkanal |
 
 Tests: `pip install -r requirements-dev.txt` und danach `python -m pytest`.
 
@@ -351,7 +391,12 @@ Tests: `pip install -r requirements-dev.txt` und danach `python -m pytest`.
 - [x] Lokales Sprachmodell statt OpenAI (OpenAI bleibt als Rückfallweg erhalten)
 - [x] Gedächtnis mit Kurzzeit- und Langzeitspeicher in SQLite
 - [ ] Sprachkanal im Live-Betrieb erproben (Zuhören benötigt eine DAVE-fähige Empfangserweiterung)
-- [ ] Optionale ElevenLabs-Sprachausgabe
+- [ ] Eigene lokale Stimme für Kuro entwerfen und trainieren (ohne kostenpflichtige Dienste)
+- [x] Schlafmodus, wenn das lokale Modell nicht erreichbar ist
+- [x] Modellvergleich mit dem GPT-5.1-Original (`tools/persona_eval.py`), Ergebnis: `gemma4:12b`
+- [x] Datenschutz-Befehle für alle Nutzer (`!erinnerungen`, `!vergissmich`, `!ignoriermich`)
+- [x] Admin-Befehle nur für Serverowner, Administratoren und den Bot-Owner
+- [ ] Feintuning des lokalen Modells auf Kuros Stil (LoRA)
 - [x] Bessere Personalisierung unterteilt nach einzelnen Discord Servern/Guilds durch zusätzliche serverspezifische Hintergrundinformationen
 - [x] Optionales Owner-Profil für individuelle Namen und Hintergrundinformationen in der privaten Konfiguration
 - [x] Discord-Umfragen per Prompt oder `/ask` erstellen, einschließlich Laufzeit, Mehrfachauswahl und Berechtigungsprüfung
@@ -380,6 +425,8 @@ Wenn dir ein Fehler oder eine sinnvolle Verbesserung auffällt, kannst du gerne 
 - `config.example.json` und `.env.example` sind ausschließlich Vorlagen und enthalten keine echten Zugangsdaten.
 - Das veröffentlichte Docker-Image enthält keine persönlichen Secrets.
 - Nicht autorisierte Discord-Server werden automatisch verlassen.
+- Administrative Befehle sind auf Serverowner, Administratoren und den Bot-Owner beschränkt.
+- Jeder Nutzer kann seine gespeicherten Daten privat einsehen (`!erinnerungen` per DM oder `/erinnerungen`), löschen (`!vergissmich`) und das Speichern abschalten (`!ignoriermich`). Im Sprachkanal wird nur Text gespeichert, keine Tonaufnahmen.
 - API Keys sollten nach Möglichkeit mit passenden Berechtigungen und Nutzungslimits versehen werden.
 
 ---
