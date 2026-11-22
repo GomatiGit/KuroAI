@@ -385,12 +385,34 @@ def get_allowed_channel_ids(guild: discord.Guild | None) -> set[int]:
 
 
 def is_channel_allowed(message: discord.Message) -> bool:
-    allowed_channel_ids = get_allowed_channel_ids(message.guild)
+    return is_channel_id_allowed(message.guild, message.channel.id)
 
-    if allowed_channel_ids and message.channel.id not in allowed_channel_ids:
-        return False
 
-    return True
+def is_channel_id_allowed(guild: discord.Guild | None, channel_id: int | None) -> bool:
+    allowed_channel_ids = get_allowed_channel_ids(guild)
+    return not allowed_channel_ids or channel_id in allowed_channel_ids
+
+
+def get_allowed_voice_channel_ids(guild: discord.Guild | None) -> set[int]:
+    """Sprachkanäle, die Kuro betreten darf.
+
+    ``allowed_voice_channel_ids`` (pro Server oder global) gilt, wenn es
+    Einträge hat. Sonst gilt ``allowed_channel_ids``: Ist dort etwas
+    eingetragen, muss auch der Sprachkanal darin stehen. Sind beide leer,
+    sind alle Sprachkanäle erlaubt (leere Menge).
+    """
+    guild_cfg = get_guild_config(guild)
+    voice_ids = guild_cfg.get("allowed_voice_channel_ids")
+    if voice_ids is None:
+        voice_ids = config.get("allowed_voice_channel_ids")
+    if voice_ids:
+        return set(voice_ids)
+    return get_allowed_channel_ids(guild)
+
+
+def is_voice_channel_allowed(guild: discord.Guild | None, channel_id: int) -> bool:
+    allowed = get_allowed_voice_channel_ids(guild)
+    return not allowed or channel_id in allowed
 
 
 def get_guild_messages(guild: discord.Guild | None, key: str) -> list[str]:
@@ -1407,7 +1429,9 @@ async def on_message(message: discord.Message):
     if message.guild is None:
         return
 
-    await bot.process_commands(message)
+    # Befehle gelten nur in freigegebenen Kanälen, wie Kuros Antworten auch.
+    if is_channel_allowed(message):
+        await bot.process_commands(message)
 
     prefix = config.get("prefix", "!")
     if message.content.startswith(prefix):
@@ -1669,6 +1693,11 @@ async def setmodus_slash(interaction: discord.Interaction, modus: str):
     if not is_staff(interaction.guild, interaction.user):
         await interaction.response.send_message(NO_PERMISSION_TEXT, ephemeral=True)
         return
+    if not is_channel_id_allowed(interaction.guild, interaction.channel_id):
+        await interaction.response.send_message(
+            "Dieser Channel ist für KuroAI nicht freigegeben.", ephemeral=True
+        )
+        return
     await interaction.response.send_message(
         apply_mode(interaction.guild.id, modus), allowed_mentions=SAFE_ALLOWED_MENTIONS
     )
@@ -1840,6 +1869,11 @@ async def erinnerungen(ctx):
 async def erinnerungen_slash(interaction: discord.Interaction):
     if interaction.guild is None or not is_allowed_guild(interaction.guild):
         await interaction.response.send_message("Das geht nur auf einem Server.", ephemeral=True)
+        return
+    if not is_channel_id_allowed(interaction.guild, interaction.channel_id):
+        await interaction.response.send_message(
+            "Dieser Channel ist für KuroAI nicht freigegeben.", ephemeral=True
+        )
         return
     await interaction.response.defer(ephemeral=True, thinking=True)
     report = await build_memory_report(interaction.guild, interaction.user)
@@ -2078,6 +2112,32 @@ async def komm(ctx):
     voice_state = ctx.author.voice
     if voice_state is None or voice_state.channel is None:
         await ctx.send("Geh erst selbst in einen Sprachkanal, dann komme ich nach, nya.")
+        return
+
+    target = voice_state.channel
+    if not is_voice_channel_allowed(ctx.guild, target.id):
+        allowed = [
+            f"<#{channel_id}>" for channel_id in sorted(get_allowed_voice_channel_ids(ctx.guild))
+            if getattr(ctx.guild.get_channel(channel_id), "type", None)
+            in (discord.ChannelType.voice, discord.ChannelType.stage_voice)
+        ]
+        hint = f" Freigegeben sind: {', '.join(allowed)}." if allowed else (
+            " Hier ist noch kein Sprachkanal freigegeben "
+            "(`allowed_voice_channel_ids` in der config.json)."
+        )
+        await ctx.send(
+            f"In **{target.name}** darf ich nicht rein, nya.{hint}",
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        return
+
+    me = ctx.guild.me
+    permissions = target.permissions_for(me) if me is not None else None
+    if permissions is not None and not (permissions.connect and permissions.speak):
+        await ctx.send(
+            f"Mir fehlen in **{target.name}** die Rechte zum Verbinden oder Sprechen. Hmpf.",
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
         return
 
     try:

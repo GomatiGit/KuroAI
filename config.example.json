@@ -159,6 +159,7 @@
       "welcome_channel_id": 123456789012345678,
       "log_channel_id": 123456789012345678,
       "allowed_channel_ids": [],
+      "allowed_voice_channel_ids": [],
       "style":"freundlich, verspielt, empathisch und leicht frech mit gelegentlichem, sanftem Sarkasmus",
       "persona_styles": {
         "standard": "freundlich, gemütlich, verspielt und leicht neckisch",
@@ -206,6 +207,7 @@
       "welcome_channel_id": 123456789012345678,
       "log_channel_id": 123456789012345678,
       "allowed_channel_ids": [],
+      "allowed_voice_channel_ids": [],
       "style":"freundlich, verspielt, empathisch und leicht frech mit gelegentlichem, sanftem Sarkasmus",
       "persona_styles": {
         "standard": "freundlich, gemütlich, verspielt und leicht neckisch",

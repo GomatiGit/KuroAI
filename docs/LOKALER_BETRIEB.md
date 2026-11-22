@@ -283,7 +283,14 @@ erwähnten Dritten ein.
 ### Ablauf
 
 1. `!komm` – Kuro betritt deinen Sprachkanal und schreibt in den Textkanal,
-   dass sie zuhört.
+   dass sie zuhört. Erlaubt ist das Serverownern, Admins und dem Bot-Owner
+   (`voice.join_permission: "everyone"` öffnet es für alle), und nur in einem
+   freigegebenen Textkanal. Den Sprachkanal betritt sie nur, wenn er
+   freigegeben ist: `allowed_voice_channel_ids` im Server-Bereich der
+   `config.json`; ist die Liste leer, gilt `allowed_channel_ids` (dort muss der
+   Sprachkanal dann mit eingetragen sein); sind beide leer, sind alle
+   Sprachkanäle erlaubt. Fehlen ihr dort die Discord-Rechte *Verbinden* oder
+   *Sprechen*, sagt sie das.
 2. Discord liefert das Audio **je Nutzer getrennt**. Kuro weiß dadurch sicher,
    wer spricht; eine fehleranfällige Sprechererkennung ist nicht nötig.
 3. Eine Äußerung wird erkannt (Sprechpause ~0,7 s), in Text umgewandelt und

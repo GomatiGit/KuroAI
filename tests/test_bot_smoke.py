@@ -597,7 +597,7 @@ def test_slash_erinnerungen_answers_only_ephemeral(tmp_path, monkeypatch):
         sent.append((text, kwargs.get("ephemeral")))
 
     interaction = SimpleNamespace(
-        guild=guild, user=fake_user(9001, "Marbus"),
+        guild=guild, user=fake_user(9001, "Marbus"), channel_id=777,
         response=SimpleNamespace(defer=defer),
         followup=SimpleNamespace(send=followup),
     )
@@ -623,3 +623,77 @@ def test_setmodus_lists_modes_and_hilfe_shows_choices(tmp_path, monkeypatch):
     choices = run(bot.setmodus_autocomplete(None, "ghe"))
     assert [c.value for c in choices] == ["ghetto_kuro"]
     assert {c.value for c in run(bot.setmodus_autocomplete(None, ""))} == {"standard", "frech", "ghetto_kuro", "auto"}
+
+
+def test_komm_only_joins_released_voice_channels(tmp_path, monkeypatch):
+    pytest.importorskip("numpy")
+    import discord
+    guilds = {str(GUILD_ID): {"allowed_channel_ids": [777, 500], "allowed_voice_channel_ids": []}}
+    bot = load_bot(tmp_path, monkeypatch, name="bot_voicechan",
+                   overrides={"voice": {"enabled": True}, "allowed_guild_ids": [GUILD_ID],
+                              "guilds": guilds})
+    joined = []
+
+    async def fake_join(channel, text_channel):
+        joined.append(channel.id)
+        return SimpleNamespace(say=lambda text: None)
+
+    bot.voice_manager.join = fake_join
+    bot.VOICE_CONFIG["greeting"] = ""
+    guilds = bot.config["guilds"]
+    ok = SimpleNamespace(connect=True, speak=True)
+    released = SimpleNamespace(id=500, name="Taverne", type=discord.ChannelType.voice,
+                               permissions_for=lambda me: ok)
+    other = SimpleNamespace(id=600, name="Geheimraum", type=discord.ChannelType.voice,
+                            permissions_for=lambda me: ok)
+    channels = {500: released, 600: other}
+    guild = SimpleNamespace(id=GUILD_ID, name="Taverne", owner_id=9001, me=object(),
+                            get_channel=channels.get)
+    owner = fake_user(9001, "Chefin")
+
+    def ctx_in(voice_channel):
+        owner.voice = SimpleNamespace(channel=voice_channel)
+        return FakeCtx(guild, owner, fake_channel(777))
+
+    ctx = ctx_in(other)
+    run(bot.komm.callback(ctx))
+    assert joined == [] and "darf ich nicht rein" in ctx.sent[0] and "<#500>" in ctx.sent[0]
+
+    ctx = ctx_in(released)
+    run(bot.komm.callback(ctx))
+    assert joined == [500] and "Taverne" in ctx.sent[0]
+
+    # Eigene Liste für Sprachkanäle hat Vorrang.
+    guilds[str(GUILD_ID)]["allowed_voice_channel_ids"] = [600]
+    assert bot.is_voice_channel_allowed(guild, 600) and not bot.is_voice_channel_allowed(guild, 500)
+    # Ohne jede Freigabe sind alle Sprachkanäle erlaubt.
+    guilds[str(GUILD_ID)].update(allowed_channel_ids=[], allowed_voice_channel_ids=[])
+    assert bot.is_voice_channel_allowed(guild, 600)
+
+    # Fehlende Discord-Rechte werden gemeldet.
+    guilds[str(GUILD_ID)]["allowed_channel_ids"] = [777]
+    no_rights = SimpleNamespace(id=700, name="Bühne", type=discord.ChannelType.voice,
+                                permissions_for=lambda me: SimpleNamespace(connect=True, speak=False))
+    guilds[str(GUILD_ID)]["allowed_voice_channel_ids"] = [700]
+    ctx = ctx_in(no_rights)
+    run(bot.komm.callback(ctx))
+    assert "Rechte" in ctx.sent[0] and joined == [500]
+    bot.memory.close()
+
+
+def test_commands_are_ignored_outside_released_channels(tmp_path, monkeypatch):
+    bot = load_bot(tmp_path, monkeypatch, name="bot_cmdchan",
+                   overrides={"guilds": {str(GUILD_ID): {"allowed_channel_ids": [777]}}})
+    calls = []
+
+    async def record(message):
+        calls.append(message.channel.id)
+
+    bot.bot.process_commands = record
+    guild = SimpleNamespace(id=GUILD_ID, name="Taverne")
+    for channel_id in (777, 888):
+        message = SimpleNamespace(author=fake_user(9001, "Marbus"), guild=guild,
+                                  channel=fake_channel(channel_id), content="!komm")
+        run(bot.on_message(message))
+    assert calls == [777]
+    bot.memory.close()

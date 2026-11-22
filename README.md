@@ -233,6 +233,8 @@ und passe mindestens die Server- und Persona-Einstellungen an deine Umgebung an.
 Wichtige Bereiche:
 
 - `allowed_guild_ids` bestimmt, auf welchen Discord-Servern Kuro aktiv sein darf.
+- `allowed_channel_ids` (pro Server unter `guilds`) legt fest, in welchen Kanälen Kuro antwortet und Befehle annimmt. Leer bedeutet: alle Kanäle.
+- `allowed_voice_channel_ids` (pro Server) legt fest, welche Sprachkanäle Kuro mit `!komm` betreten darf. Leer bedeutet: Es gilt `allowed_channel_ids`, der Sprachkanal muss dann dort mit eingetragen sein. Sind beide leer, sind alle Sprachkanäle erlaubt.
 - Unter `guilds` können serverindividuelle Einstellungen hinterlegt werden.
 - Unter `personas` werden die verschiedenen Persönlichkeiten definiert.
 - `keyword_rules` enthält Keyword-Reaktionen.
@@ -359,6 +361,8 @@ Kuro kann vollständig auf eigener Hardware laufen. Die Einrichtung – Modellwa
 
 Ist das Sprachmodell nicht erreichbar, schläft Kuro: Sie zeigt das im Status an, antwortet höchstens mit einem kurzen Schlafhinweis und wacht von selbst wieder auf, sobald der PC läuft. Ein Rückfall auf ein langsames CPU-Modell findet bewusst nicht statt.
 
+Befehle funktionieren nur in freigegebenen Kanälen (`allowed_channel_ids`), überall sonst ignoriert Kuro sie wie normale Nachrichten.
+
 **Befehle für alle**
 
 | Befehl | Wirkung |
@@ -380,7 +384,7 @@ Ist das Sprachmodell nicht erreichbar, schläft Kuro: Sie zeigt das im Status an
 | `!reset` | löscht den Gesprächskontext dieses Channels (Erinnerungen bleiben) |
 | `!keywords` | zeigt die aktiven Keyword-Regeln |
 | `!say <text>` | Kuro schreibt den Text, dein Befehl wird gelöscht |
-| `!komm` / `!geh` | Kuro betritt bzw. verlässt deinen Sprachkanal |
+| `!komm` / `!geh` | Kuro betritt bzw. verlässt deinen Sprachkanal, sofern er freigegeben ist |
 
 Tests: `pip install -r requirements-dev.txt` und danach `python -m pytest`.
 
