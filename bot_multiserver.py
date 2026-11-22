@@ -16,7 +16,7 @@ import discord
 from discord.ext import commands
 
 from kuro import prompts as kuro_prompts
-from kuro.formatting import add_paragraphs
+from kuro.formatting import add_paragraphs, drop_repeated_actions
 from kuro.images import ImageError, to_data_url
 from kuro.llm import LLMClient, LLMError, LLMUnavailable, chat_tool
 from kuro.memory import MemoryStore
@@ -1120,9 +1120,12 @@ async def generate_reply(
                 "und eine Dauer von 1–768 ganzen Stunden."
             )
 
+    text = result.text
+    if LLM_CONFIG.get("drop_repeated_actions", True):
+        text = drop_repeated_actions(text)
     if LLM_CONFIG.get("paragraphs", True):
-        return add_paragraphs(result.text)
-    return result.text
+        text = add_paragraphs(text)
+    return text
 
 
 def split_message(text: str, limit: int = 1900) -> list[str]:

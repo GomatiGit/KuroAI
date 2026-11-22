@@ -22,6 +22,9 @@ DEFAULTS: dict[str, Any] = {
         "temperature": 0.85,
         "top_p": 0.95,
         "max_tokens": 700,
+        # Bremst Wiederholungen (Ollama, vLLM und llama.cpp verstehen beides).
+        "frequency_penalty": 0.3,
+        "presence_penalty": 0.3,
         "request_timeout": 120,
         # Ist der Rechner mit dem Sprachmodell aus, "schläft" Kuro:
         # so lange auf die Verbindung warten, dann als nicht erreichbar werten …
@@ -60,6 +63,8 @@ DEFAULTS: dict[str, Any] = {
             "Szene mit einer eigenen Handlung. Gliedere in kurze Absätze mit Leerzeilen: "
             "Handlung und Rede je in einem eigenen Absatz. Locker, Deutsch."
         ),
+        # Fast gleiche Handlungen innerhalb einer Antwort nur einmal behalten.
+        "drop_repeated_actions": True,
         # Lange Antworten ohne Absätze automatisch in Absätze gliedern.
         "paragraphs": True,
         # Kuros eigene Gesten der letzten Antworten nennen, damit sie sich nicht wiederholt.
@@ -175,6 +180,8 @@ def resolve_llm(config: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, 
             "temperature": None,
             "top_p": None,
             "max_tokens": None,
+            "frequency_penalty": None,
+            "presence_penalty": None,
             "extra_body": {"reasoning_effort": config.get("reasoning_effort", "low")},
             # OpenAI braucht keine Dauerprüfung und etwas mehr Geduld beim Verbinden.
             "connect_timeout": 10,

@@ -31,3 +31,19 @@ def test_short_or_already_formatted_text_is_untouched():
     assert add_paragraphs(formatted) == formatted
     code = LONG + " ```yaml\nfoo: bar\n```"
     assert add_paragraphs(code) == code
+
+
+def test_repeated_actions_in_one_reply_are_dropped():
+    from kuro.formatting import drop_repeated_actions
+
+    reply = ("*Ohren spitze sich auf und schnurre* Nya~ mein Goblin-Charmeur! *Strecke mich und reibe mich an dir*\n"
+             "Zarya die Heldin? *Ohren spitze sich auf und schnurre* Das ist ja aufregend! "
+             "*Schwinge meinen Schwanz aufgeregt*\n"
+             "Erzähl mir mehr! *Ohren spitze sich auf* Bin schon ganz gespannt, du magische Goblin-Dame! 😼💖")
+    out = drop_repeated_actions(reply)
+    assert out.count("Ohren spitze") == 1
+    assert "*Strecke mich und reibe mich an dir*" in out and "*Schwinge meinen Schwanz aufgeregt*" in out
+    assert "Zarya die Heldin? Das ist ja aufregend!" in out
+    assert "Erzähl mir mehr! Bin schon ganz gespannt" in out
+    assert drop_repeated_actions("*grinst* Hallo. *grinst breit und kichert* Na?") == \
+        "*grinst* Hallo. *grinst breit und kichert* Na?", "neue Details bleiben erhalten"

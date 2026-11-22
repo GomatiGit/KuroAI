@@ -32,6 +32,42 @@ def _split_long(part: str, max_chars: int) -> list[str]:
     return chunks
 
 
+_WORD = re.compile(r"[a-zäöüß]{3,}")
+_FILLER = frozenset("und sich mit dem den der die das ein eine einen auf aus ganz dir dich mir mich ihr".split())
+
+
+def _action_words(action: str) -> set[str]:
+    return {w for w in _WORD.findall(action.lower()) if w not in _FILLER}
+
+
+def drop_repeated_actions(text: str, threshold: float = 0.75) -> str:
+    """Entfernt Handlungen, die innerhalb derselben Antwort fast gleich schon vorkamen.
+
+    Lokale Modelle schreiben gern dreimal *Ohren spitzen sich auf*. Eine spätere
+    Handlung fliegt raus, wenn mindestens ``threshold`` ihrer Wörter schon in
+    einer früheren Handlung derselben Antwort standen.
+    """
+    seen: list[set[str]] = []
+    pieces: list[str] = []
+    position = 0
+    for match in _ACTION.finditer(text):
+        words = _action_words(match.group(0))
+        repeated = bool(words) and any(
+            len(words & earlier) / len(words) >= threshold for earlier in seen
+        )
+        if repeated:
+            pieces.append(text[position:match.start()].rstrip(" \t"))
+            position = match.end()
+            continue
+        if words:
+            seen.append(words)
+    pieces.append(text[position:])
+    result = "".join(pieces)
+    result = re.sub(r"[ \t]{2,}", " ", result)
+    result = re.sub(r"\n{3,}", "\n\n", result)
+    return result.strip()
+
+
 def add_paragraphs(text: str, min_length: int = 220, max_paragraph: int = 260) -> str:
     if not text or len(text) < min_length or "\n" in text.strip() or "```" in text:
         return text

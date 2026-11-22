@@ -55,6 +55,7 @@ def test_bot_loads_with_local_llm_and_registers_commands(tmp_path, monkeypatch):
     assert bot.LLM_CONFIG["base_url"].startswith("http://") and bot.CONTEXT_MESSAGES == 30
     assert (tmp_path / "kuro.sqlite3").exists()
     assert bot.voice_manager is None, "Sprache ist in der Beispielconfig aus"
+    assert bot.llm.params["frequency_penalty"] == 0.3 and bot.llm.params["presence_penalty"] == 0.3
     bot.memory.close()
 
 
@@ -65,7 +66,7 @@ def test_without_llm_section_it_stays_on_openai(tmp_path, monkeypatch):
     assert module.LLM_CONFIG["base_url"] == "https://api.openai.com/v1"
     assert module.LLM_CONFIG["model"] == config["model"]
     assert module.llm.extra_body == {"reasoning_effort": config["reasoning_effort"]}
-    assert "temperature" not in module.llm.params
+    assert "temperature" not in module.llm.params and "frequency_penalty" not in module.llm.params
     assert module.LLM_CONFIG["health_check_seconds"] == 0, "keine Dauerprüfung gegen OpenAI"
     assert module.memory_agent is None, "ohne memory-Bereich keine zusätzlichen OpenAI-Aufrufe"
     module.memory.close()

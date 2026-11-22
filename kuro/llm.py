@@ -155,6 +155,8 @@ class LLMClient:
                 "temperature": cfg.get("temperature"),
                 "top_p": cfg.get("top_p"),
                 "max_tokens": cfg.get("max_tokens"),
+                "frequency_penalty": cfg.get("frequency_penalty"),
+                "presence_penalty": cfg.get("presence_penalty"),
             },
             extra_body=cfg.get("extra_body"),
             timeout=float(cfg.get("request_timeout", 120)),
