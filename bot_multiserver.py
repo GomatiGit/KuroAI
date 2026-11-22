@@ -770,9 +770,19 @@ async def fetch_images_as_data_urls(urls: list[str]) -> list[str]:
                     if resp.status != 200:
                         continue
                     content_type = resp.headers.get("Content-Type", "image/png").split(";")[0]
-                    data = await resp.content.read(MAX_IMAGE_BYTES + 1)
-                    if not content_type.startswith("image/") or len(data) > MAX_IMAGE_BYTES:
+                    if not content_type.startswith("image/"):
                         continue
+                    # read(n) liefert nur, was gerade angekommen ist – deshalb bis zum
+                    # Ende lesen, sonst ist das Bild abgeschnitten.
+                    buffer = bytearray()
+                    async for chunk in resp.content.iter_chunked(64 * 1024):
+                        buffer.extend(chunk)
+                        if len(buffer) > MAX_IMAGE_BYTES:
+                            break
+                    if len(buffer) > MAX_IMAGE_BYTES:
+                        log.warning("Bild zu groß (über %s MB), übersprungen", MAX_IMAGE_BYTES // 2**20)
+                        continue
+                    data = bytes(buffer)
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 log.warning("Bild konnte nicht geladen werden: %s", exc)
                 continue

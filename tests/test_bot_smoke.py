@@ -303,6 +303,16 @@ def test_images_are_converted_to_jpeg_for_local_models(tmp_path, monkeypatch):
     from aiohttp.test_utils import TestServer
 
     bot = load_bot(tmp_path, monkeypatch, name="bot_images")
+    import asyncio
+    import io
+    import random
+    from PIL import Image
+    rng = random.Random(1)
+    noise = Image.frombytes("RGB", (300, 300), bytes(rng.getrandbits(8) for _ in range(270000)))
+    out = io.BytesIO()
+    noise.save(out, format="JPEG", quality=95)
+    big_jpeg = out.getvalue()
+    assert len(big_jpeg) > 100_000
     files = {
         "a.webp": (_image_bytes("WEBP"), "image/webp"),
         "b.png": (_image_bytes("PNG", "RGBA"), "image/png"),
@@ -315,23 +325,34 @@ def test_images_are_converted_to_jpeg_for_local_models(tmp_path, monkeypatch):
             data, ctype = files[request.match_info["name"]]
             return web.Response(body=data, content_type=ctype)
 
+        async def slow(request):
+            # Wie Discords CDN: das Bild kommt in mehreren Stücken.
+            resp = web.StreamResponse(headers={"Content-Type": "image/jpeg"})
+            await resp.prepare(request)
+            for i in range(0, len(big_jpeg), 4096):
+                await resp.write(big_jpeg[i:i + 4096])
+                await asyncio.sleep(0.001)
+            return resp
+
         async def page(request):
             return web.Response(text="<html>", content_type="text/html")
 
         app = web.Application()
         app.router.add_get("/img/{name}", image)
+        app.router.add_get("/slow.jpg", slow)
         app.router.add_get("/page", page)
         server = TestServer(app)
         await server.start_server()
         try:
             base = str(server.make_url(""))
             return await bot.fetch_images_as_data_urls(
-                [f"{base}/img/a.webp", f"{base}/img/b.png", f"{base}/page", f"{base}/img/kaputt.png"])
+                [f"{base}/img/a.webp", f"{base}/img/b.png", f"{base}/page", f"{base}/img/kaputt.png"]
+            ) + await bot.fetch_images_as_data_urls([f"{base}/slow.jpg"])
         finally:
             await server.close()
 
     urls = run(scenario())
-    assert len(urls) == 2, "WebP und PNG umgewandelt, HTML und kaputte Datei übersprungen"
+    assert len(urls) == 3, "WebP, PNG und das stückweise gelieferte JPEG; HTML und Kaputtes übersprungen"
     assert all(u.startswith("data:image/jpeg;base64,/9j/") for u in urls)
     bot.memory.close()
 
