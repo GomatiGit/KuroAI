@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import logging
 import os
@@ -17,7 +16,8 @@ import discord
 from discord.ext import commands
 
 from kuro import prompts as kuro_prompts
-from kuro.llm import LLMClient, LLMUnavailable, chat_tool
+from kuro.images import ImageError, to_data_url
+from kuro.llm import LLMClient, LLMError, LLMUnavailable, chat_tool
 from kuro.memory import MemoryStore
 from kuro.memory_agent import MemoryAgent
 from kuro.settings import resolve_llm, section
@@ -736,8 +736,11 @@ async def fetch_images_as_data_urls(urls: list[str]) -> list[str]:
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 log.warning("Bild konnte nicht geladen werden: %s", exc)
                 continue
-            encoded = base64.b64encode(data).decode("ascii")
-            data_urls.append(f"data:{content_type};base64,{encoded}")
+            # Einheitlich als JPEG: lokale Server lesen nicht jedes Format (z. B. WebP, GIF).
+            try:
+                data_urls.append(await asyncio.to_thread(to_data_url, data))
+            except ImageError as exc:
+                log.warning("Bild konnte nicht umgewandelt werden (%s): %s", content_type, exc)
     return data_urls
 
 
@@ -753,6 +756,7 @@ async def build_chat_messages(
     poll_allowed: bool | None = None,
     via_voice: bool = False,
     heard: list[str] | None = None,
+    skip_images: bool = False,
 ) -> list[dict[str, Any]]:
     """Baut die Anfrage: Systemblock, Chatkontext, Erinnerungen, aktuelle Nachricht."""
     history = await asyncio.to_thread(memory.recent_messages, channel_id, CONTEXT_MESSAGES)
@@ -771,7 +775,7 @@ async def build_chat_messages(
     notes: list[str] = []
     image_data_urls: list[str] = []
     if image_urls:
-        if LLM_CONFIG["vision"]:
+        if LLM_CONFIG["vision"] and not skip_images:
             image_data_urls = await fetch_images_as_data_urls(image_urls)
         if not image_data_urls:
             notes.append(
@@ -1019,21 +1023,32 @@ async def generate_reply(
     """Fragt das Sprachmodell. Gibt Text zurück oder geprüfte Umfragedaten."""
     allow_poll = bool(LLM_CONFIG["tools"]) and can_create_poll(guild, channel, user)
 
-    messages = await build_chat_messages(
-        guild_id=guild.id,
-        channel_id=channel.id,
-        speaker_id=user.id,
-        speaker_name=user.display_name,
-        speaker_is_owner=is_owner(user),
-        user_text=user_text,
-        image_urls=image_urls,
-        poll_allowed=allow_poll if LLM_CONFIG["tools"] else None,
-    )
+    async def build(skip_images: bool = False) -> list[dict[str, Any]]:
+        return await build_chat_messages(
+            guild_id=guild.id,
+            channel_id=channel.id,
+            speaker_id=user.id,
+            speaker_name=user.display_name,
+            speaker_is_owner=is_owner(user),
+            user_text=user_text,
+            image_urls=image_urls,
+            poll_allowed=allow_poll if LLM_CONFIG["tools"] else None,
+            skip_images=skip_images,
+        )
 
-    result = await llm.chat(
-        messages,
-        tools=[POLL_TOOL] if allow_poll else None,
-    )
+    tools = [POLL_TOOL] if allow_poll else None
+
+    try:
+        result = await llm.chat(await build(), tools=tools)
+    except LLMUnavailable:
+        raise
+    except LLMError as exc:
+        # Kann das Modell mit dem Bild nichts anfangen, antwortet Kuro ohne Bild
+        # und sagt das offen – statt mit einer Fehlermeldung abzubrechen.
+        if not image_urls or "HTTP 400" not in str(exc):
+            raise
+        log.warning("Bild vom Sprachmodell abgelehnt, antworte ohne Bild: %s", exc)
+        result = await llm.chat(await build(skip_images=True), tools=tools)
 
     if result.tool_calls:
         calls = result.tool_calls

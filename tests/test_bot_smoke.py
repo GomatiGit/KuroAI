@@ -284,34 +284,96 @@ def test_voice_hooks_use_text_channel_context_and_mark_owner(tmp_path, monkeypat
     bot.memory.close()
 
 
-def test_images_are_embedded_for_local_models(tmp_path, monkeypatch):
+def _image_bytes(fmt, mode="RGB", size=(40, 30)):
+    import io
+    from PIL import Image
+    buffer = io.BytesIO()
+    Image.new(mode, size, (200, 30, 30, 128) if mode == "RGBA" else (200, 30, 30)).save(buffer, format=fmt)
+    return buffer.getvalue()
+
+
+def test_images_are_converted_to_jpeg_for_local_models(tmp_path, monkeypatch):
+    pytest.importorskip("PIL")
     from aiohttp import web
     from aiohttp.test_utils import TestServer
 
     bot = load_bot(tmp_path, monkeypatch, name="bot_images")
-    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+    files = {
+        "a.webp": (_image_bytes("WEBP"), "image/webp"),
+        "b.png": (_image_bytes("PNG", "RGBA"), "image/png"),
+        "c.gif": (_image_bytes("GIF", "P"), "image/gif"),
+        "kaputt.png": (b"\x89PNG kein echtes Bild", "image/png"),
+    }
 
     async def scenario():
         async def image(request):
-            return web.Response(body=png, content_type="image/png")
+            data, ctype = files[request.match_info["name"]]
+            return web.Response(body=data, content_type=ctype)
 
         async def page(request):
             return web.Response(text="<html>", content_type="text/html")
 
         app = web.Application()
-        app.router.add_get("/a.png", image)
+        app.router.add_get("/img/{name}", image)
         app.router.add_get("/page", page)
         server = TestServer(app)
         await server.start_server()
         try:
             base = str(server.make_url(""))
             return await bot.fetch_images_as_data_urls(
-                [f"{base}/a.png", f"{base}/page", f"{base}/fehlt.png"])
+                [f"{base}/img/a.webp", f"{base}/img/b.png", f"{base}/page", f"{base}/img/kaputt.png"])
         finally:
             await server.close()
 
     urls = run(scenario())
-    assert len(urls) == 1 and urls[0].startswith("data:image/png;base64,iVBORw0KGgo")
+    assert len(urls) == 2, "WebP und PNG umgewandelt, HTML und kaputte Datei übersprungen"
+    assert all(u.startswith("data:image/jpeg;base64,/9j/") for u in urls)
+    bot.memory.close()
+
+
+def test_big_images_are_scaled_down():
+    pytest.importorskip("PIL")
+    import io
+    from PIL import Image
+    from kuro.images import ImageError, to_jpeg
+
+    out = Image.open(io.BytesIO(to_jpeg(_image_bytes("PNG", size=(4000, 1000)))))
+    assert out.format == "JPEG" and max(out.size) == 1568 and out.size[1] == 392
+    with pytest.raises(ImageError):
+        to_jpeg(b"nope")
+
+
+def test_reply_retries_without_image_when_model_rejects_it(tmp_path, monkeypatch):
+    from kuro.llm import LLMError
+
+    bot = load_bot(tmp_path, monkeypatch, name="bot_img_retry")
+    guild = SimpleNamespace(id=GUILD_ID, name="Taverne", me=None)
+    calls = []
+
+    async def fake_images(urls):
+        return ["data:image/jpeg;base64,AAAA"]
+
+    async def picky_chat(messages, tools=None, **kwargs):
+        calls.append(messages)
+        if isinstance(messages[-1]["content"], list):
+            raise LLMError('HTTP 400 vom LLM-Endpunkt: {"error":{"message":"Failed to load image or audio file"}}')
+        return ChatResult(text="Hmpf, das Bild sehe ich gerade nicht, nya.")
+
+    monkeypatch.setattr(bot, "fetch_images_as_data_urls", fake_images)
+    monkeypatch.setattr(bot.llm, "chat", picky_chat)
+    answer = run(bot.generate_reply(guild=guild, channel=fake_channel(), user=fake_user(9001, "Marbus"),
+                                    user_text="Was siehst du?", image_urls=["https://cdn/x.webp"]))
+    assert answer == "Hmpf, das Bild sehe ich gerade nicht, nya."
+    assert len(calls) == 2 and isinstance(calls[1][-1]["content"], str)
+    assert "nicht sehen kannst" in calls[1][-1]["content"]
+
+    async def broken(messages, tools=None, **kwargs):
+        raise LLMError("HTTP 500 vom LLM-Endpunkt: kaputt")
+
+    monkeypatch.setattr(bot.llm, "chat", broken)
+    with pytest.raises(LLMError, match="500"):
+        run(bot.generate_reply(guild=guild, channel=fake_channel(), user=fake_user(9001, "Marbus"),
+                               user_text="Was siehst du?", image_urls=["https://cdn/x.webp"]))
     bot.memory.close()
 
 
