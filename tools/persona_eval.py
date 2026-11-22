@@ -192,17 +192,25 @@ async def run_comparison(
     sections: list[str] = []
     key: dict[str, Any] = {}
 
+    conversations = [
+        prompts.build_messages(
+            system_prompt, sample["context"], speaker_name=sample["user"]["author_name"],
+            speaker_ref=sample["user"]["author_ref"], is_owner=sample["user"]["is_owner"],
+            user_text=sample["user"]["content"],
+        )
+        for sample in samples
+    ]
+    # Modell für Modell: so muss Ollama nicht bei jeder Nachricht das Modell wechseln,
+    # und die gemessenen Zeiten entsprechen dem normalen Betrieb.
+    for name, client in clients.items():
+        for messages in conversations:
+            replies[name].append(await ask_model(client, messages))
+
     for number, sample in enumerate(samples, start=1):
         user = sample["user"]
-        messages = prompts.build_messages(
-            system_prompt, sample["context"], speaker_name=user["author_name"],
-            speaker_ref=user["author_ref"], is_owner=user["is_owner"], user_text=user["content"],
-        )
         answers = {"Original": sample["reference"]}
-        for name, client in clients.items():
-            result = await ask_model(client, messages)
-            replies[name].append(result)
-            answers[name] = result["text"]
+        for name in clients:
+            answers[name] = replies[name][number - 1]["text"]
 
         names = list(answers)
         if blind:
@@ -225,6 +233,11 @@ async def run_comparison(
         fmt = (lambda v: f"{v:.0f}") if metric == "median_chars" else (lambda v: f"{v:.0%}")
         header.append(f"| {title} | {fmt(reference[metric])} |"
                       + "".join(f" {fmt(per_model[name][metric])} |" for name in clients))
+    empty_row = "| Leere Antworten | 0 |" + "".join(
+        f" {sum(1 for r in replies[name] if not r['text'] or r['error'])} von {len(samples)} |"
+        for name in clients
+    )
+    header.append(empty_row)
     speed = ["| Erstes Wort nach (s, Median) | – |", "| Antwortdauer (s, Median) | – |"]
     for name, items in replies.items():
         firsts = [r["first_token"] for r in items if r["first_token"] is not None]
@@ -275,6 +288,10 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--persona", default="standard")
     p_run.add_argument("--temperature", type=float, default=0.85)
     p_run.add_argument("--max-tokens", type=int, default=700)
+    p_run.add_argument(
+        "--reasoning-effort", default="",
+        help='z. B. "none": schaltet bei Denkmodellen (Gemma 4, Qwen 3.x) das Nachdenken ab',
+    )
     p_run.add_argument("--examples", type=Path, default=Path("data/style_examples.json"))
     p_run.add_argument("--out", type=Path, default=Path("eval_out"))
     p_run.add_argument("--blind", action="store_true")
@@ -310,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
         clients = {
             model: LLMClient(args.base_url, model, args.api_key,
                              params={"temperature": args.temperature, "max_tokens": args.max_tokens},
+                             extra_body={"reasoning_effort": args.reasoning_effort} if args.reasoning_effort else None,
                              max_concurrency=1)
             for model in models
         }

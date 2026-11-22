@@ -160,7 +160,7 @@ steht – er würde sonst zusätzliche Tokens kosten.
 | `temperature`, `top_p`, `max_tokens` | Sampling; `null` lässt den Wert weg |
 | `vision` | Modell kann Bilder sehen. Bei `false` sagt Kuro offen, dass sie das Bild nicht sieht |
 | `tools` | Modell kann Werkzeuge aufrufen (Umfragen). Bei `false` bietet Kuro einen Text zum Kopieren an |
-| `extra_body` | zusätzliche Request-Felder, z. B. `{"reasoning_effort": "low"}` |
+| `extra_body` | zusätzliche Request-Felder, z. B. `{"reasoning_effort": "none"}`: schaltet bei Denkmodellen wie Gemma 4 oder Qwen 3.x das Nachdenken vor der Antwort ab, das sonst Zeit und Token frisst |
 | `memory_model` | optional ein kleineres Modell nur für den Gedächtnis-Agenten |
 | `api_key_env` | Name der Umgebungsvariable mit dem Schlüssel (Standard `KURO_LLM_API_KEY`) |
 | `sleep_messages`, `sleep_status` | Texte, wenn das Modell nicht erreichbar ist (siehe unten) |

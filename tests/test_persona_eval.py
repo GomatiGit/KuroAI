@@ -72,6 +72,8 @@ def test_blind_comparison_report_contains_all_answers_and_key(tmp_path):
     body = report.split("## Beispiel 1", 1)[1]
     assert "modell-a" not in body and "Original" not in body, "im Blindteil stehen nur Buchstaben"
     assert body.count("Gerne helfe ich Ihnen weiter.") == 4 and "### C" in body
+    empty = next(line for line in report.splitlines() if line.startswith("| Leere Antworten |"))
+    assert empty == "| Leere Antworten | 0 | 0 von 4 | 0 von 4 |"
     row = next(line for line in report.splitlines() if line.startswith("| Katzenlaut |"))
     assert row.endswith("| 100% | 0% |"), "Modell A trifft den Ton, Modell B nicht"
     sent = clients["modell-a"].seen[0]
