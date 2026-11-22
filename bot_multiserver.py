@@ -193,10 +193,44 @@ def build_presence(guest_count: int) -> tuple[discord.Status, discord.CustomActi
     )
 
 
+async def warm_up_llm() -> None:
+    """Lädt das Modell in den Grafikspeicher und füllt den Prompt-Cache vor.
+
+    Ohne das dauert die erste Antwort nach dem Start sehr lange, weil Ollama das
+    Modell erst laden und Kuros ganzen Systemprompt einmal verarbeiten muss.
+    """
+    if not LLM_CONFIG.get("warm_up"):
+        return
+
+    guild_ids = [g for g in config.get("allowed_guild_ids", []) if isinstance(g, int)]
+    started = time.monotonic()
+
+    try:
+        await llm.chat(
+            [
+                {"role": "system", "content": get_system_prompt(guild_ids[0] if guild_ids else None)},
+                {"role": "user", "content": "Hallo"},
+            ],
+            max_tokens=1,
+        )
+    except LLMError as exc:
+        log.info("Vorladen des Sprachmodells übersprungen: %s", exc)
+        return
+
+    log.info("Sprachmodell vorgeladen in %.1f s", time.monotonic() - started)
+
+
+def start_warm_up() -> None:
+    task = asyncio.get_running_loop().create_task(warm_up_llm())
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
+
+
 async def handle_llm_state_change(available: bool) -> None:
     """Status anpassen und den Wechsel einmal im Log-Channel vermerken."""
     if available:
         sleep_reply_times.clear()
+        start_warm_up()
     elif voice_manager is not None:
         # Eine schlafende Kuro bleibt nicht lauschend im Sprachkanal sitzen.
         for guild_id in list(voice_manager.sessions):
@@ -1193,6 +1227,7 @@ async def on_ready():
 
     if not hasattr(bot, "llm_watchdog_task"):
         bot.llm_watchdog_task = asyncio.create_task(llm_watchdog())
+        start_warm_up()
 
 @bot.event
 async def on_guild_join(guild: discord.Guild):

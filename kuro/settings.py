@@ -28,6 +28,9 @@ DEFAULTS: dict[str, Any] = {
         "connect_timeout": 4,
         # … und erst nach so vielen Sekunden erneut versuchen.
         "retry_after_seconds": 45,
+        # Nach dem Start und beim Aufwachen das Modell vorladen, damit die erste
+        # echte Antwort nicht auf das Laden in den Grafikspeicher warten muss.
+        "warm_up": True,
         # Im Hintergrund prüfen, ob das Modell (wieder) da ist; 0 = aus.
         "health_check_seconds": 60,
         # Pro Kanal höchstens so oft mit einem Schlaf-Text antworten, sonst nur 💤.
@@ -173,6 +176,7 @@ def resolve_llm(config: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, 
             # OpenAI braucht keine Dauerprüfung und etwas mehr Geduld beim Verbinden.
             "connect_timeout": 10,
             "health_check_seconds": 0,
+            "warm_up": False,
         })
         cfg["api_key"] = (env.get("OPENAI_API_KEY", "") or "").strip()
         cfg["legacy_openai"] = True

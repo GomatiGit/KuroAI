@@ -433,3 +433,30 @@ def test_kuro_sleeps_when_the_model_is_unreachable(tmp_path, monkeypatch):
     assert status_awake[0] == discord.Status.online and "12 Gäste" in status_awake[1].name
     assert bot.LLM_CONFIG["health_check_seconds"] == 60
     bot.memory.close()
+
+
+def test_warm_up_loads_model_with_the_real_system_prompt(tmp_path, monkeypatch):
+    bot = load_bot(tmp_path, monkeypatch, name="bot_warmup")
+    seen = []
+
+    async def fake_chat(messages, tools=None, **kwargs):
+        seen.append((messages, kwargs))
+        return ChatResult(text="N")
+
+    monkeypatch.setattr(bot.llm, "chat", fake_chat)
+    run(bot.warm_up_llm())
+    messages, kwargs = seen[0]
+    assert kwargs == {"max_tokens": 1}
+    assert messages[0]["role"] == "system" and messages[0]["content"] == bot.get_system_prompt(
+        bot.config["allowed_guild_ids"][0])
+
+    async def asleep(messages, tools=None, **kwargs):
+        raise LLMUnavailable("aus")
+
+    monkeypatch.setattr(bot.llm, "chat", asleep)
+    run(bot.warm_up_llm())          # darf nicht abstürzen
+    bot.memory.close()
+
+    legacy = load_bot(tmp_path, monkeypatch, name="bot_warmup_legacy", drop=["llm", "memory"])
+    assert legacy.LLM_CONFIG["warm_up"] is False, "bei OpenAI kein unnötiger Aufruf"
+    legacy.memory.close()
