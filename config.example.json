@@ -1,6 +1,45 @@
 {
   "model": "gpt-5.1",
   "reasoning_effort": "low",
+  "llm": {
+    "base_url": "http://ollama:11434/v1",
+    "model": "mistral-small3.2:24b",
+    "temperature": 0.85,
+    "top_p": 0.95,
+    "max_tokens": 700,
+    "vision": true,
+    "tools": true,
+    "extra_body": {},
+    "memory_model": ""
+  },
+  "memory": {
+    "enabled": true,
+    "context_messages": 30,
+    "short_term_hours": 48,
+    "max_memories_in_prompt": 12,
+    "extract_after_messages": 6,
+    "extract_idle_seconds": 120
+  },
+  "voice": {
+    "enabled": false,
+    "join_permission": "admin",
+    "respond_mode": "smart",
+    "interrupt_mode": "command",
+    "post_transcript": true,
+    "stt": {
+      "base_url": "http://speaches:8000/v1",
+      "model": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+      "language": "de"
+    },
+    "tts": {
+      "base_url": "http://tts:8091/v1",
+      "model": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+      "voice": "vivian",
+      "instructions_field": "instructions",
+      "extra_body": {"language": "German", "stream_format": "audio"}
+    },
+    "pronunciation": {}
+  },
   "prefix": "!",
   "timezone": "Europe/Berlin",
   "owner_profile": {
@@ -120,6 +159,7 @@
       "welcome_channel_id": 123456789012345678,
       "log_channel_id": 123456789012345678,
       "allowed_channel_ids": [],
+      "allowed_voice_channel_ids": [],
       "style":"freundlich, verspielt, empathisch und leicht frech mit gelegentlichem, sanftem Sarkasmus",
       "persona_styles": {
         "standard": "freundlich, gemütlich, verspielt und leicht neckisch",
@@ -167,6 +207,7 @@
       "welcome_channel_id": 123456789012345678,
       "log_channel_id": 123456789012345678,
       "allowed_channel_ids": [],
+      "allowed_voice_channel_ids": [],
       "style":"freundlich, verspielt, empathisch und leicht frech mit gelegentlichem, sanftem Sarkasmus",
       "persona_styles": {
         "standard": "freundlich, gemütlich, verspielt und leicht neckisch",

@@ -1,0 +1,64 @@
+# Lokale KI-Dienste auf der Grafikkarte (RTX 4090).
+#
+# Start zusammen mit dem Bot:
+#   docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d
+#
+# Läuft die Grafikkarte in einem anderen Rechner als der Bot, startet man diese
+# Datei dort allein und trägt in der config.json statt "ollama"/"speaches"/"tts"
+# die IP dieses Rechners ein.
+#
+# Voraussetzung: NVIDIA-Treiber + NVIDIA Container Toolkit auf dem Host.
+# Image-Namen und -Tags vor dem ersten Start mit der jeweiligen Projektseite
+# abgleichen – sie ändern sich gelegentlich.
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+  # Sprachmodell (OpenAI-kompatibel unter http://ollama:11434/v1)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: kuro-ollama
+    restart: unless-stopped
+    <<: *gpu
+    environment:
+      # WICHTIG: Kuros Prompt braucht rund 10.000 Token. Ohne diese Zeile
+      # schneidet Ollama den Kontext still ab und Kuro "vergisst" ihre Rolle.
+      OLLAMA_CONTEXT_LENGTH: "16384"
+      OLLAMA_KEEP_ALIVE: "24h"
+    volumes:
+      - ./ai/ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+
+  # Spracherkennung (faster-whisper, OpenAI-kompatibel unter http://speaches:8000/v1)
+  speaches:
+    image: ghcr.io/speaches-ai/speaches:latest-cuda
+    container_name: kuro-stt
+    restart: unless-stopped
+    <<: *gpu
+    volumes:
+      - ./ai/hf-cache:/home/ubuntu/.cache/huggingface/hub
+    ports:
+      - "8000:8000"
+
+  # Sprachausgabe: bewusst nur als Vorlage. Jeder Server mit
+  # POST /v1/audio/speech und PCM-Streaming funktioniert, z. B. vLLM-Omni mit
+  # Qwen3-TTS:
+  #   vllm serve Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --omni --port 8091
+  # Image und Startbefehl bitte der Doku des gewählten TTS-Servers entnehmen
+  # und hier als Dienst "tts" eintragen (siehe docs/LOKALER_BETRIEB.md).
+  #
+  # tts:
+  #   image: <tts-server-image>
+  #   container_name: kuro-tts
+  #   restart: unless-stopped
+  #   <<: *gpu
+  #   ports:
+  #     - "8091:8091"

@@ -1,4 +1,8 @@
-discord.py==2.7.1
-openai>=1.108.1
+# [voice] bringt PyNaCl und davey (Discords Sprach-Verschlüsselung DAVE) mit.
+discord.py[voice]==2.7.1
+# Audio-Umrechnung für die Sprachfunktion.
+numpy>=1.26
+# Bildanhänge einheitlich als JPEG an lokale Modelle.
+Pillow>=10
 elevenlabs>=2.70.0
 tzdata

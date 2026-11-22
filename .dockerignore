@@ -22,3 +22,11 @@ ghetto_day.json
 data/
 
 kuro_test.mp3
+
+tests/
+tools/
+docs/
+ai/
+eval_out/
+.pytest_cache/
+*.sqlite3*

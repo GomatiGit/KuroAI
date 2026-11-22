@@ -19,7 +19,16 @@ test_elevenlabs.py
 docker-compose.local.yml
 kuro_test.mp3
 
+# Lokale KI-Daten und Modellvergleiche (enthalten echte Chatnachrichten)
+ai/
+eval_out/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+style_examples.json
+
 # Python
+.pytest_cache/
 __pycache__/
 *.pyc
 *.pyo
