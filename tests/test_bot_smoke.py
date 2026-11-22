@@ -129,7 +129,10 @@ def test_reply_flow_builds_prompt_calls_llm_and_remembers(tmp_path, monkeypatch)
     assert "[gegrillt]" in current, "Nutzer können keine System-Klammern einschleusen"
     assert tools and tools[0]["function"]["name"] == "create_poll"
 
+    assert "Bleib ganz Kuro" in current, "Stil-Erinnerung vor jeder Nachricht"
+
     second = seen[1][0]
+    assert "nimm diesmal etwas anderes: *wedelt mit dem Schwanz*" in second[-1]["content"]
     assert [m["role"] for m in second] == ["system", "user", "assistant", "user"]
     assert "verifiziert: [Owner]" in second[-1]["content"]
     assert "Heute wird gegrillt!" in second[1]["content"] and "NYAAA" in second[2]["content"]

@@ -150,6 +150,11 @@ def load_style_examples() -> list[dict[str, str]]:
 
 
 STYLE_EXAMPLES = load_style_examples()
+log.info(
+    "Stilbeispiele geladen: %s (%s)",
+    len(STYLE_EXAMPLES),
+    LLM_CONFIG.get("style_examples_file") or "aus",
+)
 
 # ---------------------------------------------------------------------------
 # Kuro schläft, wenn der Rechner mit dem Sprachmodell nicht erreichbar ist
@@ -782,6 +787,18 @@ async def build_chat_messages(
                 "Hinweis: Der Nutzer hat ein Bild angehängt, das du gerade nicht sehen kannst. "
                 "Sag das offen, statt den Inhalt zu erraten."
             )
+
+    if LLM_CONFIG.get("avoid_repeated_actions"):
+        actions = kuro_prompts.recent_actions(history)
+        if actions:
+            notes.append(
+                "Diese Gesten hast du eben schon benutzt – nimm diesmal etwas anderes: "
+                + "; ".join(f"*{a}*" for a in actions)
+            )
+
+    reminder = str(LLM_CONFIG.get("style_reminder") or "").strip()
+    if reminder and not via_voice:
+        notes.append(reminder)
 
     context_block = kuro_prompts.build_context_block(
         time_line=get_time_line(guild_id),

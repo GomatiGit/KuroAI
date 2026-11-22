@@ -13,6 +13,7 @@ Unterschiede zum bisherigen OpenAI-Aufbau:
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -243,6 +244,32 @@ def build_context_block(
     if len(lines) == 1:
         return ""
     return OPEN + "\n".join(lines) + CLOSE
+
+
+_ACTION = re.compile(r"\*([^*\n]{3,400})\*")
+
+
+def recent_actions(rows: Sequence[Mapping[str, Any]], replies: int = 4, limit: int = 6) -> list[str]:
+    """Kuros Handlungen in *Sternchen* aus ihren letzten Antworten (neueste zuerst)."""
+    found: list[str] = []
+    seen: set[str] = set()
+    answered = 0
+    for row in reversed(list(rows)):
+        if row.get("role") != "assistant":
+            continue
+        answered += 1
+        for match in _ACTION.finditer(row.get("content") or ""):
+            words = match.group(1).split()
+            if len(words) < 2:
+                continue  # *schnipp* o. Ä. ist eher ein Laut als eine Geste
+            short = " ".join(words[:6]).rstrip(",.;:")
+            key = short.lower()
+            if key not in seen:
+                seen.add(key)
+                found.append(short)
+        if answered >= replies or len(found) >= limit:
+            break
+    return found[:limit]
 
 
 def render_history(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, str]]:

@@ -72,3 +72,18 @@ def test_images_become_content_parts():
                                   user_text="schau", image_data_urls=["data:image/png;base64,AAAA"])
     content = msgs[-1]["content"]
     assert content[0]["type"] == "text" and content[1]["image_url"]["url"].startswith("data:image/png")
+
+
+def test_recent_actions_lists_own_gestures_newest_first():
+    rows = [
+        {"role": "assistant", "content": "*Ohren spitzen sich an* Nya? *wedelt mit dem Schwanz*"},
+        {"role": "user", "content": "*klaut einen Keks*"},
+        {"role": "assistant", "content": "*schnipp* *Ohren spitzen sich an, Schwanz zuckt neugierig hin und her* Hmpf."},
+    ]
+    assert prompts.recent_actions(rows) == [
+        "Ohren spitzen sich an, Schwanz zuckt",
+        "Ohren spitzen sich an",
+        "wedelt mit dem Schwanz",
+    ]
+    assert prompts.recent_actions(rows, replies=1) == ["Ohren spitzen sich an, Schwanz zuckt"]
+    assert prompts.recent_actions([]) == []

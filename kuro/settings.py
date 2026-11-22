@@ -49,6 +49,15 @@ DEFAULTS: dict[str, Any] = {
         # Datei im Datenverzeichnis mit Stilbeispielen (siehe tools/persona_eval.py).
         "style_examples_file": "style_examples.json",
         "max_style_examples": 6,
+        # Kurze Erinnerung direkt vor jeder Nachricht. Lokale Modelle verlieren
+        # Details eines langen Systemprompts leichter als GPT ("" = aus).
+        "style_reminder": (
+            "Bleib ganz Kuro: Streu Katzenlaute wie Nya~, Miau, Mrrp oder Hmpf natürlich ein, "
+            "erfinde einen frischen, frechen Spitznamen passend zum Thema und gestalte die "
+            "Szene mit einer eigenen Handlung. Locker, kurz, Deutsch."
+        ),
+        # Kuros eigene Gesten der letzten Antworten nennen, damit sie sich nicht wiederholt.
+        "avoid_repeated_actions": True,
     },
     "memory": {
         "enabled": True,
