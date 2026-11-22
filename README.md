@@ -335,11 +335,11 @@ Kuro kann vollständig auf eigener Hardware laufen. Die Einrichtung – Modellwa
 
 | Befehl | Wirkung |
 |--------|---------|
-| `!erinnerungen` | zeigt, was Kuro sich über dich gemerkt hat |
-| `!vergissmich` | löscht Kuros Erinnerungen an dich auf diesem Server |
+| `!erinnerungen` | zeigt, was Kuro über dich gespeichert hat |
+| `!vergissmich` | löscht deine Erinnerungen und gespeicherten Nachrichten auf diesem Server |
 | `!komm` / `!geh` | Kuro betritt bzw. verlässt deinen Sprachkanal |
 | `!stopp` | unterbricht Kuro beim Sprechen (im Sprachkanal reicht „Kuro, stopp“) |
-| `!ignoriermich` / `!hörmich` | Kuro hört dir im Sprachkanal nicht mehr bzw. wieder zu |
+| `!ignoriermich` / `!hörmich` | Opt-out: Kuro speichert auf keinem Server mehr etwas von dir und hört dir im Sprachkanal nicht zu / wieder einschalten |
 
 Tests: `pip install -r requirements-dev.txt` und danach `python -m pytest`.
 

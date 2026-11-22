@@ -173,3 +173,15 @@ def test_explicit_remember_request_is_evaluated_at_once(store):
         agent.close()
 
     run(scenario())
+
+
+
+def test_opted_out_speakers_are_not_evaluated(store):
+    store.set_opted_out(MARBUS, True)
+    talk(store)
+    llm = FakeLLM('{"ops": []}')
+    run(MemoryAgent(store, llm).run_channel(5, G))
+    prompt = llm.calls[0][0][1]["content"]
+    assert "Broil-King" not in prompt and "] Marbus:" not in prompt, "Marbus' eigene Nachricht fehlt"
+    assert "Gomati" in prompt
+    assert store.count_unprocessed(5) == 0

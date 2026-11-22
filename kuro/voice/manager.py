@@ -16,9 +16,6 @@ from .tts import TTSClient
 
 log = logging.getLogger("kuro.voice.manager")
 
-OPTOUT_KEY = "voice_optout:{user_id}"
-
-
 class VoiceManager:
     def __init__(
         self,
@@ -57,20 +54,16 @@ class VoiceManager:
     # -- Abmelden vom Zuhören --------------------------------------------
 
     def is_ignored(self, user_id: int) -> bool:
-        # Wird für jedes Audiopaket gefragt – deshalb im Speicher gemerkt.
-        known = self._optout.get(user_id)
-        if known is None:
-            known = bool(
-                self.store is not None
-                and self.store.get_meta(OPTOUT_KEY.format(user_id=user_id))
-            )
-            self._optout[user_id] = known
-        return known
+        """Wer ``ignoriermich`` gewählt hat, wird im Sprachkanal nicht verarbeitet."""
+        if self.store is not None:
+            return self.store.is_opted_out(user_id)  # im Speicher zwischengespeichert
+        return self._optout.get(user_id, False)
 
     def set_ignored(self, user_id: int, ignored: bool) -> None:
-        self._optout[user_id] = ignored
         if self.store is not None:
-            self.store.set_meta(OPTOUT_KEY.format(user_id=user_id), "1" if ignored else "")
+            self.store.set_opted_out(user_id, ignored)
+        else:
+            self._optout[user_id] = ignored
 
     # -- Beitreten / Verlassen -------------------------------------------
 

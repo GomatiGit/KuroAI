@@ -878,6 +878,8 @@ async def remember_exchange(
     source: str = "text",
 ) -> None:
     """Speichert Frage und Antwort und stößt den Gedächtnis-Agenten an."""
+    if await asyncio.to_thread(memory.is_opted_out, speaker_id):
+        return  # ignoriermich: von dieser Person wird nichts gespeichert
     def write() -> None:
         memory.add_message(
             channel_id, "user", user_text, guild_id=guild_id, author_id=speaker_id,
@@ -1516,11 +1518,11 @@ async def hilfe(ctx):
         f"`{prefix}setmodus <modus|auto>` (Admin)\n"
         f"`{prefix}reset` (Admin)\n" 
         f"`{prefix}keywords` (Admin)\n"
-        f"`{prefix}erinnerungen` zeigt, was ich mir über dich gemerkt habe\n"
-        f"`{prefix}vergissmich` löscht meine Erinnerungen an dich\n"
+        f"`{prefix}erinnerungen` zeigt, was ich über dich gespeichert habe\n"
+        f"`{prefix}vergissmich` löscht deine Erinnerungen und Nachrichten auf diesem Server\n"
         f"`{prefix}komm` / `{prefix}geh` Sprachkanal betreten/verlassen\n"
         f"`{prefix}stopp` unterbricht mich beim Sprechen\n"
-        f"`{prefix}ignoriermich` / `{prefix}hörmich` Zuhören für dich aus/an\n"
+        f"`{prefix}ignoriermich` / `{prefix}hörmich` nichts mehr von dir speichern / wieder speichern\n"
         f"`/ask` per Slash-Command"
     )
 
@@ -1756,38 +1758,98 @@ async def keywords_error(ctx, error):
 # ---------------------------------------------------------------------------
 # Gedächtnis-Befehle
 # ---------------------------------------------------------------------------
-@bot.command(name="erinnerungen", aliases=["gedächtnis", "gedaechtnis"])
+@bot.command(name="erinnerungen", aliases=["gedächtnis", "gedaechtnis", "meinedaten"])
 @commands.guild_only()
 async def erinnerungen(ctx):
+    """Zeigt jedem, was Kuro über ihn gespeichert hat."""
     if not is_allowed_guild(ctx.guild):
         return
 
+    prefix = config.get("prefix", "!")
+    opted_out = await asyncio.to_thread(memory.is_opted_out, ctx.author.id)
     items = await asyncio.to_thread(
         memory.list_memories, ctx.guild.id, subject_ids=[ctx.author.id], limit=25
     )
-    if not items:
-        await ctx.send("Über dich habe ich mir hier noch nichts gemerkt, nya.")
-        return
 
-    lines = ["**Das habe ich mir über dich gemerkt:**"]
-    for item in items:
-        marker = "🕒" if item.tier == "short" else "📌"
-        lines.append(f"{marker} {item.content}")
-    lines.append("-# 📌 dauerhaft · 🕒 nur vorübergehend · `vergissmich` löscht alles")
+    lines = []
+    if opted_out:
+        lines.append(
+            f"🔒 Du hast `{prefix}ignoriermich` gewählt: Ich speichere nichts Neues von dir."
+        )
+    if not items:
+        lines.append("Über dich habe ich mir hier nichts gemerkt, nya.")
+    else:
+        lines.append("**Das habe ich mir über dich gemerkt:**")
+        for item in items:
+            marker = "🕒" if item.tier == "short" else "📌"
+            lines.append(f"{marker} {item.content}")
+        lines.append(
+            f"-# 📌 dauerhaft · 🕒 nur vorübergehend · `{prefix}vergissmich` löscht alles"
+        )
 
     for chunk in split_message("\n".join(lines)):
         await ctx.send(chunk, allowed_mentions=discord.AllowedMentions.none())
 
 
+def guild_channel_ids(guild: discord.Guild) -> list[int]:
+    ids = [channel.id for channel in getattr(guild, "channels", [])]
+    ids += [thread.id for thread in getattr(guild, "threads", [])]
+    return ids
+
+
 @bot.command(name="vergissmich")
 @commands.guild_only()
 async def vergissmich(ctx):
+    """Löscht Erinnerungen und gespeicherte Nachrichten der Person auf diesem Server."""
     if not is_allowed_guild(ctx.guild):
         return
 
-    removed = await asyncio.to_thread(memory.forget_user, ctx.author.id, ctx.guild.id)
+    memories_removed = await asyncio.to_thread(memory.forget_user, ctx.author.id, ctx.guild.id)
+    messages_removed = await asyncio.to_thread(
+        memory.forget_user_messages,
+        ctx.author.id,
+        ctx.guild.id,
+        author_ref=user_reference_for_id(ctx.author.id),
+        channel_ids=guild_channel_ids(ctx.guild),
+    )
+    prefix = config.get("prefix", "!")
     await ctx.send(
-        f"Erledigt – {removed} Erinnerung(en) an dich auf diesem Server sind gelöscht.",
+        f"Erledigt – auf diesem Server habe ich {memories_removed} Erinnerung(en) an dich und "
+        f"{messages_removed} gespeicherte Nachricht(en) aus unseren Gesprächen gelöscht. "
+        f"Soll ich mir auch künftig nichts merken: `{prefix}ignoriermich`.",
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
+
+
+@bot.command(name="ignoriermich", aliases=["optout"])
+@commands.guild_only()
+async def ignoriermich(ctx):
+    """Opt-out: Kuro speichert nichts mehr von dieser Person und hört ihr nicht zu."""
+    if not is_allowed_guild(ctx.guild):
+        return
+
+    await asyncio.to_thread(memory.set_opted_out, ctx.author.id, True)
+    prefix = config.get("prefix", "!")
+    await ctx.send(
+        "Verstanden 🔒 Ab jetzt speichere ich auf keinem Server mehr etwas von dir: "
+        "keine Nachrichten, keine Erinnerungen, und im Sprachkanal höre ich dir nicht zu. "
+        "Antworten tu ich dir trotzdem, ich vergesse es danach nur wieder. "
+        f"Was schon gespeichert ist, löscht `{prefix}vergissmich`; "
+        f"rückgängig machen mit `{prefix}hörmich`.",
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
+
+
+@bot.command(name="hörmich", aliases=["hoermich", "optin"])
+@commands.guild_only()
+async def hoermich(ctx):
+    """Opt-out aufheben."""
+    if not is_allowed_guild(ctx.guild):
+        return
+
+    await asyncio.to_thread(memory.set_opted_out, ctx.author.id, False)
+    await ctx.send(
+        "Alles klar, ich merke mir wieder, was du mir erzählst, und höre dir zu, nya.",
         allowed_mentions=discord.AllowedMentions.none(),
     )
 
@@ -1923,7 +1985,7 @@ async def komm(ctx):
         f"🎙️ Ich bin in **{voice_state.channel.name}** und höre zu. "
         "Sprecht mich mit meinem Namen an. "
         "Was ich höre, wird nur in Text umgewandelt – Tonaufnahmen speichere ich nicht. "
-        f"`{prefix}ignoriermich` schaltet mein Zuhören für dich ab, "
+        f"`{prefix}ignoriermich` schaltet mein Zuhören ab und ich speichere nichts mehr von dir, "
         f"`{prefix}stopp` unterbricht mich, `{prefix}geh` schickt mich raus.",
         allowed_mentions=discord.AllowedMentions.none(),
     )
@@ -1960,32 +2022,6 @@ async def stopp(ctx):
     session = voice_manager.get(ctx.guild.id)
     if session is not None and session.interrupt("command"):
         await ctx.message.add_reaction("🤐")
-
-
-@bot.command(name="ignoriermich")
-@commands.guild_only()
-async def ignoriermich(ctx):
-    if voice_manager is None:
-        return
-
-    await asyncio.to_thread(voice_manager.set_ignored, ctx.author.id, True)
-    await ctx.send(
-        "Verstanden – ich höre dir im Sprachkanal nicht mehr zu.",
-        allowed_mentions=discord.AllowedMentions.none(),
-    )
-
-
-@bot.command(name="hörmich", aliases=["hoermich"])
-@commands.guild_only()
-async def hoermich(ctx):
-    if voice_manager is None:
-        return
-
-    await asyncio.to_thread(voice_manager.set_ignored, ctx.author.id, False)
-    await ctx.send(
-        "Alles klar, ich höre dir wieder zu, nya.",
-        allowed_mentions=discord.AllowedMentions.none(),
-    )
 
 
 @bot.event

@@ -260,8 +260,19 @@ erwähnten Dritten ein.
 - Erinnerungen bleiben auf dem Server, auf dem sie entstanden sind.
 - Der Agent speichert keine Passwörter, Adressen oder Ähnliches; Gesundheit
   und andere heikle Themen höchstens kurzfristig.
-- `!erinnerungen` zeigt jedem, was über ihn gespeichert ist; `!vergissmich`
-  löscht es. Bitte weise deine Server darauf hin, dass Kuro sich Dinge merkt.
+- Jeder Nutzer kann ohne besondere Rechte selbst bestimmen:
+  - `!erinnerungen` zeigt, was über ihn gespeichert ist.
+  - `!vergissmich` löscht auf diesem Server seine Erinnerungen und seine
+    gespeicherten Nachrichten samt Kuros Antwort darauf, auch aus dem
+    übernommenen Altverlauf.
+  - `!ignoriermich` ist ein Opt-out für alle Server: Kuro antwortet weiter,
+    speichert aber keine Nachrichten und Erinnerungen dieser Person mehr,
+    wertet sie im Gedächtnis-Agenten nicht aus und hört ihr im Sprachkanal
+    nicht zu. `!hörmich` hebt das auf.
+- Grenze: Erwähnen andere Nutzer jemanden, der sich abgemeldet hat, kann das
+  in deren gespeicherten Nachrichten stehen.
+- Bitte weise deine Server darauf hin, dass Kuro sich Dinge merkt und wie man
+  widerspricht.
 - Der alte `conversation_history.json` wird beim ersten Start übernommen und
   bleibt als Sicherung liegen.
 

@@ -223,8 +223,14 @@ class MemoryAgent:
             rows = await asyncio.to_thread(
                 self.store.unprocessed_messages, channel_id, self.max_batch
             )
+            # Wer sich abgemeldet hat (ignoriermich), wird nicht ausgewertet.
+            all_ids = [r["id"] for r in rows]
+            rows = [
+                r for r in rows
+                if r.get("author_id") is None or not self.store.is_opted_out(r["author_id"])
+            ]
             if not any(row["role"] == "user" for row in rows):
-                await asyncio.to_thread(self.store.mark_processed, [r["id"] for r in rows])
+                await asyncio.to_thread(self.store.mark_processed, all_ids)
                 return 0
 
             speakers: dict[int, str] = {}   # user_id -> "U1"
@@ -269,7 +275,7 @@ class MemoryAgent:
             applied = await asyncio.to_thread(
                 self._apply, ops, guild_id, channel_id, names, known_ids
             )
-            await asyncio.to_thread(self.store.mark_processed, [r["id"] for r in rows])
+            await asyncio.to_thread(self.store.mark_processed, all_ids)
             await asyncio.to_thread(self.store.purge_expired)
             if applied:
                 log.info("Gedächtnis: %s Änderung(en) aus Kanal %s", applied, channel_id)

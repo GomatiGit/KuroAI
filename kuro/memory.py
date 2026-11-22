@@ -181,6 +181,7 @@ class MemoryStore:
         self.max_messages_per_channel = int(max_messages_per_channel)
         self.max_long_term_per_guild = int(max_long_term_per_guild)
         self._lock = threading.RLock()
+        self._optout_cache: dict[int, bool] = {}
         self._db = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
         self._db.row_factory = sqlite3.Row
         if self.path != ":memory:":
@@ -483,6 +484,53 @@ class MemoryStore:
                     (user_id, guild_id),
                 )
             return cur.rowcount
+
+    def forget_user_messages(
+        self,
+        user_id: int,
+        guild_id: int,
+        *,
+        author_ref: str = "",
+        channel_ids: Sequence[int] = (),
+    ) -> int:
+        """Löscht die Nachrichten einer Person auf einem Server samt Kuros Antwort darauf.
+
+        Übernommene Altdaten tragen keine Server- und Nutzer-ID, nur die Kennung
+        (``author_ref``) und den Kanal – deshalb die beiden Zusatzangaben.
+        """
+        marks = ",".join("?" for _ in channel_ids)
+        legacy = f" OR (guild_id IS NULL AND channel_id IN ({marks}))" if channel_ids else ""
+        with self._tx() as db:
+            rows = db.execute(
+                "SELECT id, channel_id FROM messages WHERE role = 'user' "
+                "AND (author_id = ? OR (author_ref IS NOT NULL AND author_ref = ?)) "
+                f"AND (guild_id = ?{legacy})",
+                (user_id, author_ref or "\0", guild_id, *channel_ids),
+            ).fetchall()
+            removed = 0
+            for row in rows:
+                removed += db.execute("DELETE FROM messages WHERE id = ?", (row["id"],)).rowcount
+                # Kuros Antwort direkt danach erzählt oft nach, was die Person sagte.
+                removed += db.execute(
+                    "DELETE FROM messages WHERE id = (SELECT min(id) FROM messages "
+                    "WHERE channel_id = ? AND id > ?) AND role = 'assistant'",
+                    (row["channel_id"], row["id"]),
+                ).rowcount
+            return removed
+
+    # -- Opt-out ----------------------------------------------------------
+
+    def is_opted_out(self, user_id: int) -> bool:
+        """Hat die Person ``ignoriermich`` gewählt? (gilt auf allen Servern)"""
+        cached = self._optout_cache.get(user_id)
+        if cached is None:
+            cached = bool(self.get_meta(f"optout:{user_id}"))
+            self._optout_cache[user_id] = cached
+        return cached
+
+    def set_opted_out(self, user_id: int, opted_out: bool) -> None:
+        self.set_meta(f"optout:{user_id}", "1" if opted_out else "")
+        self._optout_cache[user_id] = opted_out
 
     def purge_expired(self, now: float | None = None) -> int:
         now = time.time() if now is None else now

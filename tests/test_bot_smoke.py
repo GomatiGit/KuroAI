@@ -172,7 +172,7 @@ def test_voice_setup_creates_manager_when_enabled(tmp_path, monkeypatch):
     assert bot.voice_manager.is_ignored(5) is False
     bot.voice_manager.set_ignored(5, True)
     assert bot.voice_manager.is_ignored(5) is True
-    assert bot.memory.get_meta("voice_optout:5") == "1"
+    assert bot.memory.get_meta("optout:5") == "1" and bot.memory.is_opted_out(5)
     bot.memory.close()
 
 
@@ -208,8 +208,8 @@ def test_memory_commands_show_and_forget_only_own_entries(tmp_path, monkeypatch)
 
     run(scenario())
     assert "Met statt Bier" in ctx.sent[0] and "Hotelpool" in ctx.sent[0] and "Spurd0" not in ctx.sent[0]
-    assert "2 Erinnerung(en)" in ctx.sent[1]
-    assert "noch nichts gemerkt" in ctx.sent[2]
+    assert "2 Erinnerung(en)" in ctx.sent[1] and "1 gespeicherte Nachricht(en)" in ctx.sent[1]
+    assert "nichts gemerkt" in ctx.sent[2]
     assert [m.subject_id for m in bot.memory.list_memories(GUILD_ID)] == [9002]
     assert bot.memory.recent_messages(777) == [] and "Kontext für diesen Channel gelöscht" in ctx.sent[3]
     bot.memory.close()
@@ -483,3 +483,50 @@ def test_warm_up_loads_model_with_the_real_system_prompt(tmp_path, monkeypatch):
     legacy = load_bot(tmp_path, monkeypatch, name="bot_warmup_legacy", drop=["llm", "memory"])
     assert legacy.LLM_CONFIG["warm_up"] is False, "bei OpenAI kein unnötiger Aufruf"
     legacy.memory.close()
+
+
+
+def test_opt_out_is_available_to_everyone_and_stores_nothing(tmp_path, monkeypatch):
+    bot = load_bot(tmp_path, monkeypatch, name="bot_optout")   # Sprache ist aus
+    assert bot.voice_manager is None
+    guild = SimpleNamespace(id=GUILD_ID, name="Taverne", channels=[SimpleNamespace(id=777)], threads=[])
+    marbus, spurdo = fake_user(9001, "Marbus"), fake_user(9002, "Spurd0")
+    ctx = FakeCtx(guild, marbus, fake_channel())
+    for cmd in ("ignoriermich", "optout", "hörmich", "optin", "erinnerungen", "meinedaten", "vergissmich"):
+        command = bot.bot.get_command(cmd)
+        assert command is not None and not command.checks[1:], f"{cmd} ohne Rechteprüfung"
+
+    # Altdaten (ohne Server-/Nutzer-ID) und neue Daten liegen schon vor.
+    ref = bot.user_reference_for_id(9001)
+    bot.memory.add_message(777, "user", "alt von Marbus", author_ref=ref, author_name="Marbus")
+    bot.memory.add_message(777, "assistant", "Kuro über Marbus' Geheimnis")
+    bot.memory.add_message(777, "user", "von Spurd0", guild_id=GUILD_ID, author_id=9002)
+    bot.memory.add_message(777, "assistant", "Antwort an Spurd0", guild_id=GUILD_ID)
+    bot.memory.add_message(778, "user", "anderer Server", guild_id=GUILD_ID + 1, author_id=9001)
+
+    async def scenario():
+        await bot.ignoriermich.callback(ctx)
+        await bot.remember_exchange(guild_id=GUILD_ID, channel_id=777, speaker_id=9001,
+                                    speaker_name="Marbus", speaker_is_owner=False,
+                                    user_text="Merk dir: ich mag Met", answer="Nya, notiert!")
+        await bot.remember_exchange(guild_id=GUILD_ID, channel_id=777, speaker_id=9002,
+                                    speaker_name="Spurd0", speaker_is_owner=False,
+                                    user_text="Hallo", answer="Hallo Bärchen")
+        await bot.erinnerungen.callback(ctx)
+        await bot.vergissmich.callback(ctx)
+        bot.memory_agent.close()
+
+    run(scenario())
+    contents = [r["content"] for r in bot.memory.recent_messages(777, 50)]
+    assert "Merk dir: ich mag Met" not in contents and "Nya, notiert!" not in contents
+    assert "alt von Marbus" not in contents and "Kuro über Marbus' Geheimnis" not in contents
+    assert contents == ["von Spurd0", "Antwort an Spurd0", "Hallo", "Hallo Bärchen"]
+    assert [r["content"] for r in bot.memory.recent_messages(778)] == ["anderer Server"], \
+        "vergissmich gilt nur für diesen Server"
+    assert "Ab jetzt speichere ich auf keinem Server" in ctx.sent[0]
+    assert "🔒" in ctx.sent[1]
+    assert "2 gespeicherte Nachricht(en)" in ctx.sent[2]
+
+    run(bot.hoermich.callback(ctx))
+    assert bot.memory.is_opted_out(9001) is False
+    bot.memory.close()
