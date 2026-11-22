@@ -65,7 +65,8 @@ def test_blind_comparison_report_contains_all_answers_and_key(tmp_path):
     system_prompt = persona_eval.system_prompt_from_config(
         config, "standard", [{"user": "ping", "kuro": "Pong, du Paketverlust-Gepard."}])
     report, key = run(persona_eval.run_comparison(
-        clients=clients, samples=samples, system_prompt=system_prompt, blind=True, seed=3))
+        clients=clients, samples=samples, system_prompt=system_prompt, blind=True, seed=3,
+        style_reminder="Spiel die Szene aktiv weiter."))
 
     assert len(key) == 4 and all(sorted(v.values()) == ["Original", "modell-a", "modell-b"] for v in key.values())
     assert "modell-a" in report.split("## Beispiel 1")[0], "Kennzahlen-Tabelle nennt die Modelle"
@@ -79,3 +80,4 @@ def test_blind_comparison_report_contains_all_answers_and_key(tmp_path):
     sent = clients["modell-a"].seen[0]
     assert sent[0]["role"] == "system" and "Pong, du Paketverlust-Gepard." in sent[0]["content"]
     assert "verifiziert:" in sent[-1]["content"]
+    assert "Spiel die Szene aktiv weiter." in sent[-1]["content"], "Eval prüft wie der Bot"

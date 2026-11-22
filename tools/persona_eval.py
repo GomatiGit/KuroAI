@@ -37,6 +37,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from kuro import prompts  # noqa: E402
+from kuro.settings import section  # noqa: E402
 from kuro.memory import parse_legacy_user_line  # noqa: E402
 
 CAT_SOUND = re.compile(r"\b(ny+a+h?|nyan|miau|mi+au|hmpf|mrr+p?|schnurr)", re.IGNORECASE)
@@ -185,6 +186,7 @@ async def run_comparison(
     system_prompt: str,
     blind: bool,
     seed: int,
+    style_reminder: str = "",
 ) -> tuple[str, dict[str, Any]]:
     """Fragt alle Modelle ab und baut den Markdown-Bericht. Gibt (Bericht, Schlüssel) zurück."""
     rng = random.Random(seed)
@@ -197,6 +199,13 @@ async def run_comparison(
             system_prompt, sample["context"], speaker_name=sample["user"]["author_name"],
             speaker_ref=sample["user"]["author_ref"], is_owner=sample["user"]["is_owner"],
             user_text=sample["user"]["content"],
+            # Wie im Bot: Stil-Erinnerung und zuletzt benutzte Gesten vor der Nachricht.
+            context_block=prompts.build_context_block(notes=[
+                *(["Diese Gesten hast du eben schon benutzt – nimm diesmal etwas anderes: "
+                   + "; ".join(f"*{a}*" for a in prompts.recent_actions(sample["context"]))]
+                  if prompts.recent_actions(sample["context"]) else []),
+                style_reminder,
+            ]),
         )
         for sample in samples
     ]
@@ -335,6 +344,7 @@ def main(argv: list[str] | None = None) -> int:
             return await run_comparison(
                 clients=clients, samples=samples, blind=args.blind, seed=args.seed,
                 system_prompt=system_prompt_from_config(config, args.persona, examples),
+                style_reminder=str(section(config, "llm").get("style_reminder") or ""),
             )
         finally:
             for client in clients.values():
