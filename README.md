@@ -7,7 +7,7 @@
 <h1 align="center">🐾 KuroAI</h1>
 
 <p align="center">
-Ein Discord-Rollenspiel-Bot mit OpenAI, mehreren Persönlichkeiten, Bildanalyse und serverindividueller Konfiguration.
+Ein Discord-Rollenspiel-Bot mit lokalem Sprachmodell oder OpenAI, Gedächtnis, Sprachkanal-Unterstützung, mehreren Persönlichkeiten, Bildanalyse und serverindividueller Konfiguration.
 </p>
 
 <p align="center">
@@ -24,11 +24,11 @@ Ein Discord-Rollenspiel-Bot mit OpenAI, mehreren Persönlichkeiten, Bildanalyse 
 ## ✨ Features
 
 - 🐾 Mehrere Persönlichkeiten (Personas)
-- 🧠 Persistenter Gesprächsverlauf über Neustarts hinweg
-- 🤖 OpenAI-Integration mit konfigurierbarem Modell
+- 🧠 Gedächtnis in SQLite: Chatkontext, Kurzzeit- und Langzeitgedächtnis – Kuro entscheidet selbst, was sie sich merkt
+- 🤖 Lokales Sprachmodell über jeden OpenAI-kompatiblen Endpunkt (Ollama, llama.cpp, vLLM …) oder wie bisher OpenAI
+- 🎙️ (optional) Sprachkanal: Kuro hört zu, unterscheidet die Sprecher, antwortet mit eigener Stimme und lässt sich unterbrechen
 - 👯 Eindeutige Identifikation der Chatter über ihre Discord-User-ID
 - 🖼️ Analyse hochgeladener Bilder
-- 🗣️ (optional) Sprachausgabe durch elevenlabs (in Entwicklung)
 - 👋 Welcome- und Goodbye-Nachrichten
 - 🌍 Multi-Server-Unterstützung
 - 🔒 Server-Whitelist
@@ -215,7 +215,10 @@ Wichtige Bereiche:
 - Unter `guilds` können serverindividuelle Einstellungen hinterlegt werden.
 - Unter `personas` werden die verschiedenen Persönlichkeiten definiert.
 - `keyword_rules` enthält Keyword-Reaktionen.
-- `max_history_per_channel` bestimmt, wie viele Nachrichten je Channel an OpenAI als Gesprächskontext übergeben werden. Ein höherer Wert kann die API-Kosten erhöhen.
+- `llm` legt Endpunkt und Modell fest. Fehlt der Bereich, nutzt Kuro wie bisher OpenAI mit `model` und `reasoning_effort`.
+- `memory.context_messages` bestimmt, wie viele Nachrichten je Channel als Gesprächskontext mitgegeben werden (Standard 30). Das frühere `max_history_per_channel` wird nicht mehr ausgewertet.
+- `voice` schaltet die Sprachfunktion ein und konfiguriert Spracherkennung und Stimme.
+- Alle Einzelheiten dazu stehen in [docs/LOKALER_BETRIEB.md](docs/LOKALER_BETRIEB.md).
 - `bot_reply_limits` begrenzt, wie häufig Kuro mit anderen Bots kommunizieren darf, falls du noch andere Textbots hast, die auf Nachrichten reagieren.
 
 ### 8. Kuro starten
@@ -285,7 +288,9 @@ Docker-Umgebung
 
 Persistentes data/
 ├── config.json
-├── conversation_history.json
+├── kuro.sqlite3              (Gedächtnis: Verlauf, Kurzzeit, Langzeit)
+├── style_examples.json       (optional: Stilbeispiele für lokale Modelle)
+├── conversation_history.json (Altbestand, wird einmalig übernommen)
 ├── known_members.json
 ├── ghetto_day.json
 ├── mode_override.json
@@ -324,8 +329,27 @@ Erstelle echte Discord-Umfragen durch eine Nachricht an Kuro oder über `/ask` �
 
 ---
 
+## 🧠 Lokaler Betrieb, Gedächtnis und Sprache
+
+Kuro kann vollständig auf eigener Hardware laufen. Die Einrichtung – Modellwahl, Speicherbedarf, Gedächtnis, Sprachkanal und der Modellvergleich mit `tools/persona_eval.py` – ist in **[docs/LOKALER_BETRIEB.md](docs/LOKALER_BETRIEB.md)** beschrieben.
+
+| Befehl | Wirkung |
+|--------|---------|
+| `!erinnerungen` | zeigt, was Kuro sich über dich gemerkt hat |
+| `!vergissmich` | löscht Kuros Erinnerungen an dich auf diesem Server |
+| `!komm` / `!geh` | Kuro betritt bzw. verlässt deinen Sprachkanal |
+| `!stopp` | unterbricht Kuro beim Sprechen (im Sprachkanal reicht „Kuro, stopp“) |
+| `!ignoriermich` / `!hörmich` | Kuro hört dir im Sprachkanal nicht mehr bzw. wieder zu |
+
+Tests: `pip install -r requirements-dev.txt` und danach `python -m pytest`.
+
+---
+
 ## 🛣️ Roadmap
 
+- [x] Lokales Sprachmodell statt OpenAI (OpenAI bleibt als Rückfallweg erhalten)
+- [x] Gedächtnis mit Kurzzeit- und Langzeitspeicher in SQLite
+- [ ] Sprachkanal im Live-Betrieb erproben (Zuhören benötigt eine DAVE-fähige Empfangserweiterung)
 - [ ] Optionale ElevenLabs-Sprachausgabe
 - [x] Bessere Personalisierung unterteilt nach einzelnen Discord Servern/Guilds durch zusätzliche serverspezifische Hintergrundinformationen
 - [x] Optionales Owner-Profil für individuelle Namen und Hintergrundinformationen in der privaten Konfiguration

@@ -8,11 +8,16 @@ services:
 
     environment:
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Nur nötig, solange in der config.json kein "llm"-Bereich steht (OpenAI-Betrieb).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       # Discord-IDs immer als Text behandeln (besonders in TrueNAS SCALE).
       KURO_OWNER_USER_ID: "${KURO_OWNER_USER_ID}"
-      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
-      KURO_VOICE_ID: ${KURO_VOICE_ID}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      KURO_VOICE_ID: ${KURO_VOICE_ID:-}
+      # Optional: Schlüssel für eigene LLM-/STT-/TTS-Endpunkte (lokal meist leer).
+      KURO_LLM_API_KEY: ${KURO_LLM_API_KEY:-}
+      KURO_STT_API_KEY: ${KURO_STT_API_KEY:-}
+      KURO_TTS_API_KEY: ${KURO_TTS_API_KEY:-}
       KURO_DATA_DIR: /app/data
 
     volumes:
