@@ -1535,12 +1535,14 @@ async def ping(ctx):
 @bot.command(name="hilfe")
 async def hilfe(ctx):
     prefix = config.get("prefix", "!")
+    guild_id = ctx.guild.id if ctx.guild else None
     await ctx.send(
         f"**Befehle**\n"
         f"`{prefix}ping`\n"
         f"`{prefix}hilfe` zeigt das hier an\n"
         f"`{prefix}modus` (Admin)\n"
-        f"`{prefix}setmodus <modus|auto>` (Admin)\n"
+        f"`{prefix}setmodus <modus>` oder `/setmodus` (Admin), zur Auswahl:\n"
+        f"{mode_list_text(guild_id)}\n"
         f"`{prefix}reset` (Admin)\n" 
         f"`{prefix}keywords` (Admin)\n"
         f"`{prefix}erinnerungen` schickt dir per DM, was ich über dich gespeichert habe "
@@ -1568,70 +1570,107 @@ async def modus(ctx):
 
     await ctx.send(
         f"Auf diesem Server ist die Persona "
-        f"**{active}** aktiv ({selection}).",
+        f"**{active}** aktiv ({selection}).\n"
+        f"**Verfügbare Modi**\n{mode_list_text(ctx.guild.id)}",
         allowed_mentions=SAFE_ALLOWED_MENTIONS,
+    )
+
+
+def persona_summary(key: str) -> str:
+    """Kurzbeschreibung einer Persona für Listen und Vorschläge."""
+    persona = config.get("personas", {}).get(key, {})
+    text = persona.get("description") or persona.get("style") or ""
+    parts = [part.strip() for part in text.split(",") if part.strip()]
+    return ", ".join(parts[:3])
+
+
+def mode_list_text(guild_id: int | None = None) -> str:
+    active = get_current_mode_name(guild_id) if guild_id is not None else None
+    lines = []
+    for key in config.get("personas", {}):
+        marker = " ✅" if key == active else ""
+        summary = persona_summary(key)
+        lines.append(f"• `{key}`{marker}" + (f": {summary}" if summary else ""))
+    lines.append("• `auto`: wieder automatisch wählen")
+    return "\n".join(lines)
+
+
+def match_mode(requested: str) -> str | None:
+    requested = requested.strip().lower()
+    if requested == "auto":
+        return "auto"
+    for key in config.get("personas", {}):
+        if key.lower() == requested:
+            return key
+    return None
+
+
+def apply_mode(guild_id: int, requested: str | None) -> str:
+    """Setzt die Persona und liefert die Antwort für Prefix- und Slash-Befehl."""
+    prefix = config.get("prefix", "!")
+    if not requested:
+        return (
+            f"**Verfügbare Modi**\n{mode_list_text(guild_id)}\n"
+            f"-# Nutze `{prefix}setmodus <modus>` oder `/setmodus` mit Auswahlliste."
+        )
+
+    mode = match_mode(requested)
+    if mode is None:
+        return f"Unbekannter Modus. Zur Auswahl stehen:\n{mode_list_text(guild_id)}"
+
+    try:
+        if mode == "auto":
+            clear_mode_override(guild_id)
+        else:
+            save_mode_override(guild_id, mode)
+    except OSError:
+        log.exception("Persona-Auswahl für Guild %s konnte nicht gespeichert werden.", guild_id)
+        return "Die Einstellung konnte nicht gespeichert werden. Bitte prüfe die Logs."
+
+    if mode == "auto":
+        return (
+            "Die Persona steht auf diesem Server wieder auf "
+            "**Automatik**. Andere Server bleiben unverändert."
+        )
+    return (
+        f"Die Persona wurde für diesen Server auf **{mode}** gesetzt. "
+        "Andere Server bleiben unverändert."
     )
 
 
 @bot.command(name="setmodus")
 @commands.guild_only()
 @staff_only()
-async def setmodus(ctx, mode: str):
+async def setmodus(ctx, mode: str | None = None):
     if not is_allowed_guild(ctx.guild):
         return
+    await ctx.send(apply_mode(ctx.guild.id, mode), allowed_mentions=SAFE_ALLOWED_MENTIONS)
 
-    requested_mode = mode.strip()
-    valid_modes = set(config.get("personas", {}).keys())
 
-    if requested_mode.lower() == "auto":
-        try:
-            clear_mode_override(ctx.guild.id)
-        except OSError:
-            log.exception(
-                "Persona-Auswahl für Guild %s konnte nicht "
-                "zurückgesetzt werden.",
-                ctx.guild.id,
-            )
-            await ctx.send(
-                "Die Einstellung konnte nicht gespeichert werden. "
-                "Bitte prüfe die Logs."
-            )
-            return
+async def setmodus_autocomplete(interaction: discord.Interaction, current: str):
+    current = (current or "").lower()
+    choices = []
+    for key in [*config.get("personas", {}), "auto"]:
+        if current and current not in key.lower():
+            continue
+        summary = persona_summary(key) if key != "auto" else "wieder automatisch wählen"
+        label = f"{key}: {summary}" if summary else key
+        choices.append(discord.app_commands.Choice(name=label[:100], value=key))
+    return choices[:25]
 
-        await ctx.send(
-            "Die Persona steht auf diesem Server wieder auf "
-            "**Automatik**. Andere Server bleiben unverändert."
-        )
+
+@bot.tree.command(name="setmodus", description="Persona für diesen Server wählen (nur Admins).")
+@discord.app_commands.describe(modus="Persona aus der Liste oder auto")
+@discord.app_commands.autocomplete(modus=setmodus_autocomplete)
+async def setmodus_slash(interaction: discord.Interaction, modus: str):
+    if interaction.guild is None or not is_allowed_guild(interaction.guild):
+        await interaction.response.send_message("Das geht nur auf einem Server.", ephemeral=True)
         return
-
-    if requested_mode not in valid_modes:
-        modes_text = ", ".join(sorted(valid_modes))
-
-        await ctx.send(
-            f"Unbekannte Persona. Erlaubt sind: "
-            f"{modes_text} oder `auto`.",
-            allowed_mentions=SAFE_ALLOWED_MENTIONS,
-        )
+    if not is_staff(interaction.guild, interaction.user):
+        await interaction.response.send_message(NO_PERMISSION_TEXT, ephemeral=True)
         return
-
-    try:
-        save_mode_override(ctx.guild.id, requested_mode)
-    except OSError:
-        log.exception(
-            "Persona-Auswahl für Guild %s konnte nicht gespeichert werden.",
-            ctx.guild.id,
-        )
-        await ctx.send(
-            "Die Einstellung konnte nicht gespeichert werden. "
-            "Bitte prüfe die Logs."
-        )
-        return
-
-    await ctx.send(
-        f"Die Persona wurde für diesen Server auf "
-        f"**{requested_mode}** gesetzt. "
-        "Andere Server bleiben unverändert.",
-        allowed_mentions=SAFE_ALLOWED_MENTIONS,
+    await interaction.response.send_message(
+        apply_mode(interaction.guild.id, modus), allowed_mentions=SAFE_ALLOWED_MENTIONS
     )
 
 
@@ -1758,8 +1797,6 @@ async def say_error(ctx, error):
 async def setmodus_error(ctx, error):
     if isinstance(error, (commands.CheckFailure, commands.MissingPermissions)):
         await ctx.send(NO_PERMISSION_TEXT)
-    elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send("Nutze `!setmodus <modus>` oder `!setmodus auto`.")
     else:
         await ctx.send(f"Fehler: {error}")
 

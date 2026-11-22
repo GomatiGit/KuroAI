@@ -605,3 +605,21 @@ def test_slash_erinnerungen_answers_only_ephemeral(tmp_path, monkeypatch):
     assert sent and all(ephemeral is True for _, ephemeral in sent)
     assert "Met" in sent[0][0]
     bot.memory.close()
+
+
+def test_setmodus_lists_modes_and_hilfe_shows_choices(tmp_path, monkeypatch):
+    bot = load_bot(tmp_path, monkeypatch, name="bot_modes")
+    guild = SimpleNamespace(id=GUILD_ID, name="Taverne", owner_id=9001)
+    ctx = FakeCtx(guild, fake_user(9001, "Chefin"), fake_channel())
+    run(bot.setmodus.callback(ctx))                 # ohne Argument: Vorschläge
+    run(bot.setmodus.callback(ctx, "FRECH"))        # Groß/klein egal
+    run(bot.setmodus.callback(ctx, "quatsch"))
+    run(bot.hilfe.callback(ctx))
+    for key in ("standard", "frech", "ghetto_kuro", "auto"):
+        assert f"`{key}`" in ctx.sent[0] and f"`{key}`" in ctx.sent[3]
+    assert "**frech**" in ctx.sent[1] and bot.load_mode_override(GUILD_ID) == "frech"
+    assert "Unbekannter Modus" in ctx.sent[2] and "`frech` ✅" in ctx.sent[2]
+
+    choices = run(bot.setmodus_autocomplete(None, "ghe"))
+    assert [c.value for c in choices] == ["ghetto_kuro"]
+    assert {c.value for c in run(bot.setmodus_autocomplete(None, ""))} == {"standard", "frech", "ghetto_kuro", "auto"}

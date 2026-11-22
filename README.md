@@ -338,7 +338,7 @@ Kuro kann vollständig auf eigener Hardware laufen. Die Einrichtung – Modellwa
 | `!erinnerungen` | schickt dir per DM, was Kuro über dich gespeichert hat; `/erinnerungen` zeigt es nur dir im Kanal |
 | `!vergissmich` | löscht deine Erinnerungen und gespeicherten Nachrichten auf diesem Server |
 | `!komm` / `!geh` | Kuro betritt bzw. verlässt deinen Sprachkanal (nur Serverowner, Admins, Bot-Owner) |
-| `!modus`, `!setmodus`, `!reset`, `!keywords`, `!say` | nur Serverowner, Admins und Bot-Owner |
+| `!modus`, `!setmodus`, `!reset`, `!keywords`, `!say` | nur Serverowner, Admins und Bot-Owner; `!setmodus` ohne Angabe listet die Modi, `/setmodus` schlägt sie in einer Auswahlliste vor |
 | `!stopp` | unterbricht Kuro beim Sprechen (im Sprachkanal reicht „Kuro, stopp“) |
 | `!ignoriermich` / `!hörmich` | Opt-out: Kuro speichert auf keinem Server mehr etwas von dir und hört dir im Sprachkanal nicht zu / wieder einschalten |
 
