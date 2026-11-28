@@ -21,6 +21,7 @@ from kuro.images import ImageError, to_data_url
 from kuro.llm import LLMClient, LLMError, LLMUnavailable, chat_tool
 from kuro.memory import MemoryStore
 from kuro.memory_agent import MemoryAgent, is_remember_request
+from kuro import reminders as kuro_reminders
 from kuro.settings import resolve_llm, section
 
 DATA_DIR = Path(os.getenv("KURO_DATA_DIR", "."))
@@ -762,6 +763,18 @@ def get_guild_background(guild_id: int | None) -> str:
     return background.strip()
 
 
+def get_timezone_name(guild_id: int | None = None) -> str:
+    timezone_name = config.get("timezone", "Europe/Berlin")
+    guilds = config.get("guilds", {})
+    if guild_id is not None and isinstance(guilds, dict):
+        guild_config = guilds.get(str(guild_id), {})
+        if isinstance(guild_config, dict):
+            timezone_name = guild_config.get("timezone", timezone_name)
+    if not isinstance(timezone_name, str) or not timezone_name.strip():
+        return "Europe/Berlin"
+    return timezone_name.strip()
+
+
 def get_time_line(guild_id: int | None = None) -> str:
     """Aktuelle Zeit als eine Zeile für den Kontextblock."""
     timezone_name = config.get("timezone", "Europe/Berlin")
@@ -1121,6 +1134,91 @@ async def execute_poll(data, guild, channel, user) -> str:
     return f"Die Umfrage ist erstellt: {sent.jump_url}"
 
 
+async def execute_reminder(request, guild, channel, user) -> str:
+    """Speichert eine Erinnerung und liefert Kuros Bestätigung."""
+    prefix = config.get("prefix", "!")
+    if await asyncio.to_thread(memory.is_opted_out, user.id):
+        return (
+            f"Du hast `{prefix}ignoriermich` gewählt, deshalb speichere ich nichts von dir, "
+            "auch keine Erinnerungen. Mit `" + prefix + "hörmich` geht das wieder, nya."
+        )
+    guild_id = getattr(guild, "id", None)
+    now = datetime.now(ZoneInfo(get_timezone_name(guild_id)))
+    try:
+        due = kuro_reminders.resolve_due(request, now)
+    except ValueError as exc:
+        return f"Hmpf, das kann ich mir so nicht notieren: {exc}"
+    reminder_id = await asyncio.to_thread(
+        memory.add_reminder, user.id, guild_id, getattr(channel, "id", None),
+        request.text, due.timestamp(), limit=kuro_reminders.MAX_PER_USER,
+    )
+    if reminder_id is None:
+        return (
+            f"*schüttelt den Kopf* Du hast schon {kuro_reminders.MAX_PER_USER} offene "
+            f"Erinnerungen bei mir, mehr merk ich mir nicht. Mit `{prefix}wecker` siehst du sie "
+            f"und mit `{prefix}wecker löschen <nr>` machst du Platz."
+        )
+    log.info("Erinnerung %s für %s gestellt: fällig %s", reminder_id, user.id, due.isoformat())
+    return kuro_reminders.confirmation_text(request.text, kuro_reminders.format_when(due, now))
+
+
+async def execute_action(answer, guild, channel, user) -> str:
+    """Führt aus, was generate_reply statt Text geliefert hat."""
+    if isinstance(answer, kuro_reminders.ReminderRequest):
+        return await execute_reminder(answer, guild, channel, user)
+    if isinstance(answer, dict):
+        return await execute_poll(answer, guild, channel, user)
+    return answer
+
+
+async def deliver_due_reminders(now: float | None = None) -> int:
+    """Stellt fällige Erinnerungen per DM zu. Gibt die Zahl der erledigten zurück."""
+    now = time.time() if now is None else now
+    due = await asyncio.to_thread(memory.due_reminders, now)
+    done = 0
+    for item in due:
+        user_id = int(item["user_id"])
+        user = bot.get_user(user_id)
+        try:
+            if user is None:
+                user = await bot.fetch_user(user_id)
+            text = kuro_reminders.delivery_text(user.mention, item["text"], now - item["due_at"])
+            await user.send(text, allowed_mentions=discord.AllowedMentions(users=[user]))
+        except discord.Forbidden:
+            # DMs zu: im Kanal Bescheid sagen, aber ohne den Inhalt zu verraten.
+            channel = bot.get_channel(int(item["channel_id"] or 0))
+            if channel is not None and user is not None:
+                try:
+                    await channel.send(
+                        f"{user.mention} ⏰ ich wollte dich per DM an etwas erinnern, aber deine "
+                        "Direktnachrichten sind zu. Öffne sie, dann klappt's beim nächsten Mal.",
+                        allowed_mentions=discord.AllowedMentions(users=[user]),
+                    )
+                except discord.HTTPException:
+                    pass
+        except discord.NotFound:
+            log.warning("Erinnerung %s: Nutzer %s nicht gefunden, verworfen.", item["id"], user_id)
+        except (discord.HTTPException, OSError) as exc:
+            attempts = await asyncio.to_thread(memory.bump_reminder_attempts, item["id"])
+            if attempts < 5:
+                log.warning("Erinnerung %s nicht zugestellt (Versuch %s): %s", item["id"], attempts, exc)
+                continue
+            log.error("Erinnerung %s nach %s Versuchen verworfen: %s", item["id"], attempts, exc)
+        await asyncio.to_thread(memory.delete_reminder, item["id"])
+        done += 1
+    return done
+
+
+async def reminder_loop() -> None:
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        try:
+            await deliver_due_reminders()
+        except Exception:
+            log.exception("Fehler beim Zustellen von Erinnerungen")
+        await asyncio.sleep(20)
+
+
 async def generate_reply(
     *,
     guild: discord.Guild,
@@ -1129,7 +1227,7 @@ async def generate_reply(
     user_text: str,
     image_urls: list[str] | None = None,
 ) -> str | dict[str, Any]:
-    """Fragt das Sprachmodell. Gibt Text zurück oder geprüfte Umfragedaten."""
+    """Fragt das Sprachmodell. Gibt Text, geprüfte Umfragedaten oder einen Weckerwunsch zurück."""
     allow_poll = bool(LLM_CONFIG["tools"]) and can_create_poll(guild, channel, user)
 
     async def build(skip_images: bool = False) -> list[dict[str, Any]]:
@@ -1145,7 +1243,12 @@ async def generate_reply(
             skip_images=skip_images,
         )
 
-    tools = [POLL_TOOL] if allow_poll else None
+    tools = []
+    if allow_poll:
+        tools.append(POLL_TOOL)
+    if LLM_CONFIG["tools"]:
+        tools.append(kuro_reminders.REMINDER_TOOL)
+    tools = tools or None
 
     try:
         result = await llm.chat(await build(), tools=tools)
@@ -1161,6 +1264,15 @@ async def generate_reply(
 
     if result.tool_calls:
         calls = result.tool_calls
+        if (
+            len(calls) == 1
+            and calls[0]["name"] == "create_reminder"
+            and LLM_CONFIG["tools"]
+        ):
+            try:
+                return kuro_reminders.parse_request(calls[0]["arguments"])
+            except (ValueError, TypeError) as exc:
+                return f"Hmpf, das kann ich mir so nicht notieren: {exc}"
         if (
             not allow_poll
             or len(calls) != 1
@@ -1291,6 +1403,9 @@ async def on_ready():
 
     if not hasattr(bot, "midnight_task"):
         bot.midnight_task = asyncio.create_task(midnight_status_updater())
+
+    if not hasattr(bot, "reminder_task"):
+        bot.reminder_task = asyncio.create_task(reminder_loop())
 
     if not hasattr(bot, "llm_watchdog_task"):
         bot.llm_watchdog_task = asyncio.create_task(llm_watchdog())
@@ -1502,8 +1617,8 @@ async def on_message(message: discord.Message):
                     image_urls=image_urls,
                 )
 
-                if isinstance(answer, dict):
-                    answer = await execute_poll(
+                if not isinstance(answer, str):
+                    answer = await execute_action(
                         answer,
                         message.guild,
                         message.channel,
@@ -1571,7 +1686,9 @@ async def hilfe(ctx):
         f"`{prefix}keywords` (Admin)\n"
         f"`{prefix}erinnerungen` schickt dir per DM, was ich über dich gespeichert habe "
         f"(`/erinnerungen` zeigt es nur dir im Kanal)\n"
-        f"`{prefix}vergissmich` löscht deine Erinnerungen und Nachrichten auf diesem Server\n"
+        f"`{prefix}vergissmich` löscht deine Erinnerungen, Wecker und Nachrichten auf diesem Server\n"
+        f"⏰ „Kuro, erinnere mich in 30 Minuten an …“ stellt einen Wecker, ich schreib dir dann per DM "
+        f"(höchstens {kuro_reminders.MAX_PER_USER}); `{prefix}wecker` zeigt und löscht sie\n"
         f"`{prefix}komm` / `{prefix}geh` Sprachkanal betreten/verlassen (Admin)\n"
         f"`{prefix}stopp` unterbricht mich beim Sprechen\n"
         f"`{prefix}ignoriermich` / `{prefix}hörmich` nichts mehr von dir speichern / wieder speichern\n"
@@ -1775,8 +1892,8 @@ async def ask(interaction: discord.Interaction, frage: str):
                 user_text=frage,
             )
 
-            if isinstance(answer, dict):
-                answer = await execute_poll(
+            if not isinstance(answer, str):
+                answer = await execute_action(
                     answer,
                     interaction.guild,
                     interaction.channel,
@@ -1905,10 +2022,58 @@ async def build_memory_report(guild, user) -> str:
         lines.append(
             f"-# 📌 dauerhaft · 🕒 nur vorübergehend · `{prefix}vergissmich` löscht alles"
         )
+    pending = await asyncio.to_thread(memory.list_reminders, user.id)
+    if pending:
+        lines.append(f"⏰ Dazu {len(pending)} offene Wecker-Erinnerung(en), Details mit `{prefix}wecker`.")
     return "\n".join(lines)
 
 
-async def send_private(ctx, text: str) -> None:
+def reminder_list_text(items, timezone_name: str) -> str:
+    prefix = config.get("prefix", "!")
+    if not items:
+        return (
+            "⏰ Du hast gerade keine offenen Erinnerungen bei mir, nya.\n"
+            "-# Sag einfach: „Kuro, erinnere mich in 30 Minuten an …“"
+        )
+    tz = ZoneInfo(timezone_name)
+    now = datetime.now(tz)
+    lines = [f"⏰ **Deine offenen Erinnerungen** ({len(items)}/{kuro_reminders.MAX_PER_USER}):"]
+    for number, item in enumerate(items, start=1):
+        due = datetime.fromtimestamp(item["due_at"], tz)
+        when = kuro_reminders.format_when(due, now) if due > now else "gleich"
+        lines.append(f"`{number}` {when}: {item['text']}")
+    lines.append(f"-# Löschen mit `{prefix}wecker löschen <nr>` oder `{prefix}wecker löschen alle`")
+    return "\n".join(lines)
+
+
+@bot.command(name="wecker", aliases=["reminder"])
+@commands.guild_only()
+async def wecker(ctx, action: str = "", target: str = ""):
+    """Zeigt oder löscht die eigenen Wecker-Erinnerungen (Antwort per DM)."""
+    if not is_allowed_guild(ctx.guild):
+        return
+    items = await asyncio.to_thread(memory.list_reminders, ctx.author.id)
+    timezone_name = get_timezone_name(ctx.guild.id)
+    action = action.lower()
+    if action in ("löschen", "loeschen", "delete", "weg"):
+        target = target.lower()
+        if target in ("alle", "all"):
+            removed = await asyncio.to_thread(memory.forget_reminders, ctx.author.id)
+            note = f"🗑️ {removed} Erinnerung(en) gelöscht."
+        elif target.isdigit() and 1 <= int(target) <= len(items):
+            item = items[int(target) - 1]
+            await asyncio.to_thread(memory.delete_reminder, item["id"], ctx.author.id)
+            note = f"🗑️ Gelöscht: {item['text']}"
+        else:
+            note = "Welche denn? Gib die Nummer aus der Liste an oder `alle`."
+        items = await asyncio.to_thread(memory.list_reminders, ctx.author.id)
+        await send_private(ctx, note + "\n\n" + reminder_list_text(items, timezone_name),
+                           notice="deine Wecker")
+        return
+    await send_private(ctx, reminder_list_text(items, timezone_name), notice="deine Wecker")
+
+
+async def send_private(ctx, text: str, notice: str = "deine Erinnerungen") -> None:
     """Schickt dem Autor eine Nachricht, die andere nicht mitlesen können.
 
     Per DM; der Befehl im Kanal wird gelöscht (wenn Kuro darf) und nur ein
@@ -1932,7 +2097,7 @@ async def send_private(ctx, text: str) -> None:
         except (discord.Forbidden, discord.NotFound, discord.HTTPException):
             pass
     await ctx.send(
-        f"{ctx.author.mention} hab dir deine Erinnerungen per DM geschickt. 📬",
+        f"{ctx.author.mention} hab dir {notice} per DM geschickt. 📬",
         delete_after=10,
         allowed_mentions=discord.AllowedMentions(users=[ctx.author]),
     )
@@ -1952,6 +2117,7 @@ async def vergissmich(ctx):
         return
 
     memories_removed = await asyncio.to_thread(memory.forget_user, ctx.author.id, ctx.guild.id)
+    reminders_removed = await asyncio.to_thread(memory.forget_reminders, ctx.author.id, ctx.guild.id)
     messages_removed = await asyncio.to_thread(
         memory.forget_user_messages,
         ctx.author.id,
@@ -1962,8 +2128,9 @@ async def vergissmich(ctx):
     prefix = config.get("prefix", "!")
     await ctx.send(
         f"Erledigt – auf diesem Server habe ich {memories_removed} Erinnerung(en) an dich und "
-        f"{messages_removed} gespeicherte Nachricht(en) aus unseren Gesprächen gelöscht. "
-        f"Soll ich mir auch künftig nichts merken: `{prefix}ignoriermich`.",
+        f"{messages_removed} gespeicherte Nachricht(en) aus unseren Gesprächen gelöscht"
+        + (f", dazu {reminders_removed} offene Wecker-Erinnerung(en). " if reminders_removed else ". ")
+        + f"Soll ich mir auch künftig nichts merken: `{prefix}ignoriermich`.",
         allowed_mentions=discord.AllowedMentions.none(),
     )
 

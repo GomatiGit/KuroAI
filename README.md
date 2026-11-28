@@ -34,6 +34,7 @@ Ein Discord-Rollenspiel-Bot mit lokalem Sprachmodell oder OpenAI, Gedächtnis, S
 - 👯 Eindeutige Identifikation der Chatter über ihre Discord-User-ID
 - 🖼️ Analyse hochgeladener Bilder (auch mit lokalen Vision-Modellen)
 - 📊 Discord-Umfragen per Prompt
+- ⏰ Erinnerungen per DM: „Kuro, erinnere mich in 30 Minuten an …“
 - 🔐 Datenschutz für alle: eigene Erinnerungen privat ansehen, löschen oder das Speichern ganz abschalten
 - 👋 Welcome- und Goodbye-Nachrichten
 - 🌍 Multi-Server-Unterstützung
@@ -355,6 +356,19 @@ Erstelle echte Discord-Umfragen durch eine Nachricht an Kuro oder über `/ask` �
 
 ---
 
+## ⏰ Erinnerungen per DM
+
+Schreib Kuro einfach, woran sie dich erinnern soll, zum Beispiel „Kuro, erinnere mich in 30 Minuten, die Spülmaschine auszuräumen“ oder „… morgen um 8 Uhr an den Arzttermin“. Zur gewünschten Zeit schickt sie dir eine private Nachricht mit Erwähnung.
+
+- höchstens 3 offene Erinnerungen pro Discord-Account, höchstens 7 Tage im Voraus
+- Erinnerungen liegen in der SQLite-Datenbank und überstehen einen Neustart; war der Bot zur fälligen Zeit offline, kommen sie nach dem Start
+- auch wenn das Sprachmodell schläft, werden fällige Erinnerungen zugestellt
+- sind deine DMs geschlossen, sagt Kuro im Kanal Bescheid, ohne den Inhalt zu verraten
+- `!wecker` zeigt deine offenen Erinnerungen per DM, `!wecker löschen <nr>` bzw. `!wecker löschen alle` entfernt sie; `!vergissmich` löscht sie mit
+- wer `!ignoriermich` gewählt hat, kann keine Erinnerungen stellen, weil Kuro dann nichts speichert
+
+---
+
 ## 🧠 Lokaler Betrieb, Gedächtnis und Sprache
 
 Kuro kann vollständig auf eigener Hardware laufen. Die Einrichtung – Modellwahl, Speicherbedarf, Gedächtnis, Sprachkanal und der Modellvergleich mit `tools/persona_eval.py` – ist in **[docs/LOKALER_BETRIEB.md](docs/LOKALER_BETRIEB.md)** beschrieben.
@@ -371,7 +385,8 @@ Befehle funktionieren nur in freigegebenen Kanälen (`allowed_channel_ids`), üb
 | `!ping` | prüft, ob der Bot online ist |
 | `/ask` | fragt Kuro per Slash-Befehl |
 | `!erinnerungen` | schickt dir per DM, was Kuro über dich gespeichert hat; `/erinnerungen` zeigt es nur dir im Kanal |
-| `!vergissmich` | löscht deine Erinnerungen und gespeicherten Nachrichten auf diesem Server |
+| `!vergissmich` | löscht deine Erinnerungen, Wecker und gespeicherten Nachrichten auf diesem Server |
+| `!wecker` | zeigt deine offenen Wecker-Erinnerungen per DM; `!wecker löschen <nr>` oder `!wecker löschen alle` entfernt sie |
 | `!ignoriermich` / `!hörmich` | Opt-out: Kuro speichert auf keinem Server mehr etwas von dir und hört dir im Sprachkanal nicht zu / wieder einschalten |
 | `!stopp` | unterbricht Kuro beim Sprechen (im Sprachkanal reicht „Kuro, stopp“) |
 
@@ -400,6 +415,7 @@ Tests: `pip install -r requirements-dev.txt` und danach `python -m pytest`.
 - [x] Modellvergleich mit dem GPT-5.1-Original (`tools/persona_eval.py`), Ergebnis: `gemma4:12b`
 - [x] Datenschutz-Befehle für alle Nutzer (`!erinnerungen`, `!vergissmich`, `!ignoriermich`)
 - [x] Admin-Befehle nur für Serverowner, Administratoren und den Bot-Owner
+- [x] Erinnerungen per DM („Kuro, erinnere mich in 30 Minuten …“)
 - [ ] Feintuning des lokalen Modells auf Kuros Stil (LoRA)
 - [x] Bessere Personalisierung unterteilt nach einzelnen Discord Servern/Guilds durch zusätzliche serverspezifische Hintergrundinformationen
 - [x] Optionales Owner-Profil für individuelle Namen und Hintergrundinformationen in der privaten Konfiguration
@@ -430,7 +446,7 @@ Wenn dir ein Fehler oder eine sinnvolle Verbesserung auffällt, kannst du gerne 
 - Das veröffentlichte Docker-Image enthält keine persönlichen Secrets.
 - Nicht autorisierte Discord-Server werden automatisch verlassen.
 - Administrative Befehle sind auf Serverowner, Administratoren und den Bot-Owner beschränkt.
-- Jeder Nutzer kann seine gespeicherten Daten privat einsehen (`!erinnerungen` per DM oder `/erinnerungen`), löschen (`!vergissmich`) und das Speichern abschalten (`!ignoriermich`). Im Sprachkanal wird nur Text gespeichert, keine Tonaufnahmen.
+- Jeder Nutzer kann seine gespeicherten Daten privat einsehen (`!erinnerungen` per DM oder `/erinnerungen`), löschen (`!vergissmich`, inklusive offener Wecker) und das Speichern abschalten (`!ignoriermich`). Im Sprachkanal wird nur Text gespeichert, keine Tonaufnahmen.
 - API Keys sollten nach Möglichkeit mit passenden Berechtigungen und Nutzungslimits versehen werden.
 
 ---

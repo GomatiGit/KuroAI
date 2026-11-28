@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -696,4 +697,96 @@ def test_commands_are_ignored_outside_released_channels(tmp_path, monkeypatch):
                                   channel=fake_channel(channel_id), content="!komm")
         run(bot.on_message(message))
     assert calls == [777]
+    bot.memory.close()
+
+
+def test_reminder_tool_creates_limited_dm_reminders(tmp_path, monkeypatch):
+    import discord
+    bot = load_bot(tmp_path, monkeypatch, name="bot_reminder")
+    guild = SimpleNamespace(id=GUILD_ID, name="Taverne", me=None, owner_id=1)
+    channel = fake_channel(777)
+    user = fake_user(9001, "Gomati")
+    args = {"text": "Spülmaschine ausräumen", "minutes_from_now": 30}
+    seen_tools = []
+
+    async def with_call(messages, tools=None, **kwargs):
+        seen_tools.append([t["function"]["name"] for t in tools or []])
+        return ChatResult(tool_calls=[{"name": "create_reminder", "arguments": args}])
+
+    monkeypatch.setattr(bot.llm, "chat", with_call)
+
+    async def ask():
+        answer = await bot.generate_reply(guild=guild, channel=channel, user=user,
+                                          user_text="Kuro erinnere mich in 30 Minuten")
+        return await bot.execute_action(answer, guild, channel, user)
+
+    first = run(ask())
+    assert "create_reminder" in seen_tools[0]
+    assert "Spülmaschine ausräumen" in first and "in 30 minuten" in first.lower() and "DM" in first
+    stored = bot.memory.list_reminders(9001)
+    assert len(stored) == 1 and stored[0]["channel_id"] == 777 and stored[0]["guild_id"] == GUILD_ID
+    run(ask()), run(ask())
+    full = run(ask())
+    assert "schon 3 offene" in full and len(bot.memory.list_reminders(9001)) == 3
+
+    args.clear()
+    args.update(text="x", at="2000-01-01 10:00")
+    assert "Vergangenheit" in run(ask())
+
+    # Opt-out: nichts speichern
+    bot.memory.set_opted_out(9002, True)
+    args.update(text="y", minutes_from_now=5)
+    args.pop("at")
+    other = fake_user(9002, "Marbus")
+    reply = run(bot.execute_action(bot.kuro_reminders.ReminderRequest("y", 5), guild, channel, other))
+    assert "ignoriermich" in reply and bot.memory.list_reminders(9002) == []
+
+    # Zustellung per DM, fällige werden gelöscht
+    dms = []
+
+    async def send(text, **kwargs):
+        dms.append(text)
+
+    dm_user = SimpleNamespace(id=9001, mention="<@9001>", send=send)
+    monkeypatch.setattr(bot.bot, "get_user", lambda uid: dm_user)
+    delivered = run(bot.deliver_due_reminders(now=time.time() + 3600))
+    assert delivered == 3 and len(dms) == 3
+    assert all(d.startswith("<@9001>") and "Spülmaschine ausräumen" in d for d in dms)
+    assert bot.memory.list_reminders(9001) == []
+
+    # DMs gesperrt: Hinweis im Kanal ohne Inhalt
+    bot.memory.add_reminder(9001, GUILD_ID, 777, "Geheim", time.time() - 1)
+    posted = []
+
+    async def forbidden(text, **kwargs):
+        raise discord.Forbidden(SimpleNamespace(status=403, reason="x"), "dm closed")
+
+    async def channel_send(text, **kwargs):
+        posted.append(text)
+
+    dm_user.send = forbidden
+    monkeypatch.setattr(bot.bot, "get_channel", lambda cid: SimpleNamespace(send=channel_send))
+    assert run(bot.deliver_due_reminders()) == 1
+    assert posted and "Direktnachrichten" in posted[0] and "Geheim" not in posted[0]
+    bot.memory_agent.close()
+    bot.memory.close()
+
+
+def test_vergissmich_and_wecker_command_handle_reminders(tmp_path, monkeypatch):
+    bot = load_bot(tmp_path, monkeypatch, name="bot_wecker")
+    guild = SimpleNamespace(id=GUILD_ID, name="Taverne")
+    ctx = FakeCtx(guild, fake_user(9001, "Marbus"), fake_channel(777))
+    future = time.time() + 3600
+    bot.memory.add_reminder(9001, GUILD_ID, 777, "Tee kochen", future)
+    bot.memory.add_reminder(9001, GUILD_ID, 777, "Wäsche", future + 60)
+
+    run(bot.wecker.callback(ctx))
+    assert "Tee kochen" in ctx.dms[-1] and "(2/3)" in ctx.dms[-1]
+    assert all("Tee kochen" not in text for text in ctx.sent), "Liste nur per DM"
+    run(bot.wecker.callback(ctx, "löschen", "1"))
+    assert "Gelöscht: Tee kochen" in ctx.dms[-1]
+    assert [r["text"] for r in bot.memory.list_reminders(9001)] == ["Wäsche"]
+
+    run(bot.vergissmich.callback(ctx))
+    assert "1 offene Wecker" in ctx.sent[-1] and bot.memory.list_reminders(9001) == []
     bot.memory.close()

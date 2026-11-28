@@ -66,6 +66,24 @@ NO_POLL_RULES = (
     "erstellt zu haben; biete stattdessen einen Text zum Kopieren an."
 )
 
+REMINDER_RULES = (
+    "WECKER: Mit dem Werkzeug create_reminder stellst du eine echte Erinnerung; "
+    "zur Zeit schreibst du der Person eine private Nachricht. Nur bei einem "
+    "ausdrücklichen aktuellen Wunsch der Person, die dir gerade schreibt (etwa "
+    "„erinnere mich in 30 Minuten an …“), nie für andere und nie wegen alter "
+    "Nachrichten. Relative Angaben („in 2 Stunden“) als minutes_from_now, feste "
+    "Zeitpunkte („um 18 Uhr“, „morgen früh“) als at im Format JJJJ-MM-TT HH:MM, "
+    "gerechnet von Datum und Uhrzeit im Kontextblock; „morgen früh“ heißt 08:00. "
+    "Höchstens 7 Tage im Voraus, höchstens 3 offene Erinnerungen pro Person. Fehlt "
+    "Zeit oder Inhalt, frag nach. Behaupte nie, eine Erinnerung gestellt zu haben, "
+    "ohne das Werkzeug zu benutzen."
+)
+
+NO_REMINDER_RULES = (
+    "WECKER: Du kannst hier keine Erinnerungen stellen. Versprich niemandem, ihn "
+    "später zu erinnern; sag ehrlich, dass das gerade nicht geht."
+)
+
 VOICE_RULES = (
     "SPRACHKANAL: Nachrichten mit dem Vermerk „spricht im Sprachkanal“ hörst du, "
     "und deine Antwort wird laut vorgelesen. Antworte dann wie im Gespräch: ein bis "
@@ -206,6 +224,7 @@ def build_system_prompt(
     blocks.append(TIME_RULES)
     blocks.append(MEMORY_RULES)
     blocks.append(POLL_RULES if tools_available else NO_POLL_RULES)
+    blocks.append(REMINDER_RULES if tools_available else NO_REMINDER_RULES)
     if voice_capable:
         blocks.append(VOICE_RULES)
     examples = format_style_examples(style_examples, max_style_examples)

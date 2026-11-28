@@ -70,6 +70,19 @@ CREATE TABLE IF NOT EXISTS memories (
 CREATE INDEX IF NOT EXISTS idx_memories_guild ON memories (guild_id, subject_id);
 CREATE INDEX IF NOT EXISTS idx_memories_expiry ON memories (expires_at);
 
+CREATE TABLE IF NOT EXISTS reminders (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    guild_id    INTEGER,
+    channel_id  INTEGER,
+    text        TEXT NOT NULL,
+    due_at      REAL NOT NULL,
+    created_at  REAL NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders (due_at);
+CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders (user_id);
+
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -517,6 +530,67 @@ class MemoryStore:
                     (row["channel_id"], row["id"]),
                 ).rowcount
             return removed
+
+    # -- Wecker (Erinnerungen per DM) ----------------------------------------
+
+    def add_reminder(self, user_id: int, guild_id: int | None, channel_id: int | None,
+                     text: str, due_at: float, *, limit: int | None = None,
+                     now: float | None = None) -> int | None:
+        """Speichert eine Erinnerung. ``None``, wenn das Limit pro Person erreicht ist."""
+        now = time.time() if now is None else now
+        with self._tx() as db:
+            if limit is not None:
+                count = db.execute("SELECT count(*) FROM reminders WHERE user_id = ?",
+                                   (user_id,)).fetchone()[0]
+                if count >= limit:
+                    return None
+            cur = db.execute(
+                "INSERT INTO reminders (user_id, guild_id, channel_id, text, due_at, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, guild_id, channel_id, text, due_at, now),
+            )
+            return int(cur.lastrowid)
+
+    def list_reminders(self, user_id: int) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM reminders WHERE user_id = ? ORDER BY due_at, id", (user_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def due_reminders(self, now: float | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        now = time.time() if now is None else now
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM reminders WHERE due_at <= ? ORDER BY due_at, id LIMIT ?",
+                (now, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_reminder(self, reminder_id: int, user_id: int | None = None) -> bool:
+        with self._tx() as db:
+            if user_id is None:
+                cur = db.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+            else:
+                cur = db.execute("DELETE FROM reminders WHERE id = ? AND user_id = ?",
+                                 (reminder_id, user_id))
+            return cur.rowcount > 0
+
+    def bump_reminder_attempts(self, reminder_id: int) -> int:
+        with self._tx() as db:
+            db.execute("UPDATE reminders SET attempts = attempts + 1 WHERE id = ?", (reminder_id,))
+            row = db.execute("SELECT attempts FROM reminders WHERE id = ?", (reminder_id,)).fetchone()
+        return int(row[0]) if row else 0
+
+    def forget_reminders(self, user_id: int, guild_id: int | None = None) -> int:
+        """Löscht die Erinnerungen einer Person (optional nur die von einem Server)."""
+        with self._tx() as db:
+            if guild_id is None:
+                cur = db.execute("DELETE FROM reminders WHERE user_id = ?", (user_id,))
+            else:
+                cur = db.execute("DELETE FROM reminders WHERE user_id = ? AND guild_id = ?",
+                                 (user_id, guild_id))
+            return cur.rowcount
 
     # -- Opt-out ----------------------------------------------------------
 

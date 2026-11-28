@@ -87,3 +87,10 @@ def test_recent_actions_lists_own_gestures_newest_first():
     ]
     assert prompts.recent_actions(rows, replies=1) == ["Ohren spitzen sich an, Schwanz zuckt"]
     assert prompts.recent_actions([]) == []
+
+
+def test_reminder_rules_follow_tool_availability():
+    with_tools = prompts.build_system_prompt("x", tools_available=True)
+    assert "create_reminder" in with_tools and "WECKER" in with_tools
+    without = prompts.build_system_prompt("x", tools_available=False)
+    assert "create_reminder" not in without and "keine Erinnerungen stellen" in without
